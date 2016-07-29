@@ -1,13 +1,13 @@
 def create_dictionary_from_lexicon(path, punctuation_marks):
-    dictionary = dict()
+    words = ["<unk>", "</s>"]
     with open(path, 'r') as f:
         for line in f:
-            (word, id) = line.strip().split(None, 1)
+            word = line.strip()
 
             if word not in punctuation_marks:
-                dictionary[word] = int(id)
+                words.append(word)
 
-    return dictionary
+    return dict(zip(words, range(len(words))))
 
 def create_dictionary_from_punctuation_marks(punctuation_marks):
     punctuation_marks = ["<SPACE>"] + punctuation_marks + ["</s>"]

@@ -1,6 +1,20 @@
+from lexicon import create_dictionary_from_lexicon, create_dictionary_from_punctuation_marks
+
 def get_config():
     config = {}
-    config['lexicon'] = "/disk/data2/s1569734/bbc_original/data/lang/words.txt"
+    config['lexicon'] = "/disk/data2/s1569734/bbc_original/local/resources/mgb.150k.wlist"
+    config['punctuation_marks'] = ["<FULL_STOP>", "<COMMA>", "<QUESTION_MARK>", "<EXCLAMATION_MARK>", "<DOTS>"]
+
+    config["src_vocab"] = create_dictionary_from_lexicon(config["lexicon"], config["punctuation_marks"])
+    config["src_vocab_size"] = len(config["src_vocab"].values())
+    config["trg_vocab"] = create_dictionary_from_punctuation_marks(config["punctuation_marks"])
+    config["trg_vocab_size"] = len(config["trg_vocab"].values())
+    config["src_eos_idx"] = config["src_vocab"]["</s>"]
+    config["trg_eos_idx"] = config["trg_vocab"]["</s>"]
+    config['bos_token'] = '<s>'
+    config['eos_token'] = '</s>'
+    config['unk_token'] = '<unk>'
+
 
     config['train_data_dir'] = "/disk/data2/s1569734/bbc_original/data/train_mer10/"
     config['train_alignment_dir'] = "/disk/data2/s1569734/bbc_without_punctuation/exp/alignment/train_mer10_without_punct/"
@@ -9,7 +23,6 @@ def get_config():
     config['dev_alignment_dir'] = "/disk/data2/s1569734/bbc_without_punctuation/exp/alignment/dev_for_punctuation_addition/"
 
     config['data_dir'] = "/disk/data2/s1569734/acoustic_punctuation/"
-    config['punctuation_marks'] = ["<FULL_STOP>", "<COMMA>", "<QUESTION_MARK>", "<EXCLAMATION_MARK>", "<DOTS>"]
 
     # Model related -----------------------------------------------------------
 
@@ -62,24 +75,6 @@ def get_config():
 
     # Module name of the stream that will be used
     config['stream'] = 'stream'
-
-    # Source and target vocabularies
-    config['src_vocab'] = datadir + 'vocab.words-punctuations.words.pkl'
-    config['trg_vocab'] = datadir + 'vocab.words-punctuations.punctuations.pkl'
-
-    # Source and target datasets
-    config['src_data'] = datadir + 'lm.words'
-    config['trg_data'] = datadir + 'lm.punctuations'
-
-    # Source and target vocabulary sizes, should include bos, eos, unk tokens
-    config['src_vocab_size'] = 100000
-    config['trg_vocab_size'] = 8
-
-    # Special tokens and indexes
-    config['unk_id'] = 1
-    config['bos_token'] = '<s>'
-    config['eos_token'] = '</s>'
-    config['unk_token'] = '<unk>'
 
     # Early stopping based on f1 related ------------------------------------
 

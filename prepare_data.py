@@ -76,8 +76,8 @@ if __name__ == "__main__":
     datasets = ["train", "dev"]
 
     with h5py.File(data_file, 'a') as h5file:
-        words_dictionary = create_dictionary_from_lexicon(config["lexicon"], config["punctuation_marks"])
-        punctuation_marks_dictionary = create_dictionary_from_punctuation_marks(config["punctuation_marks"])
+        words_dictionary = config["src_vocab"]
+        punctuation_marks_dictionary = config["trg_vocab"]
 
         uttids = []
         for dataset in datasets:

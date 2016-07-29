@@ -38,11 +38,4 @@ if __name__ == "__main__":
     logger.info("Model options:\n{}".format(pprint.pformat(config)))
 
     data_path = "%s/data.h5" % config["data_dir"]
-    config["src_vocab"] = create_dictionary_from_lexicon(config["lexicon"], config["punctuation_marks"])
-    config["src_vocab_size"] = max(config["src_vocab"].values()) + 1
-    config["trg_vocab"] = create_dictionary_from_punctuation_marks(config["punctuation_marks"])
-    config["trg_vocab_size"] = max(config["trg_vocab"].values()) + 1
-    config["src_eos_idx"] = config["src_vocab"]["</s>"]
-    config["trg_eos_idx"] = config["trg_vocab"]["</s>"]
-
     main(config, get_tr_stream(data_path, config["src_eos_idx"], config["trg_eos_idx"]), get_dev_stream(data_path), args.bokeh)
