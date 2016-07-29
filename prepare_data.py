@@ -14,7 +14,7 @@ def get_uttids_from_text_file(path):
             (uttid, _) = line.strip().split(None, 1)
             uttids.add(uttid)
 
-    return uttids
+    return list(uttids)
 
 def get_utterances_from_text_file(path, punctuation_marks):
     with open(path, 'r') as f:
@@ -39,7 +39,7 @@ def text_to_words_and_punctuation_marks(text, punctuation_marks):
         output_words.append(word)
         output_punctuation_marks.append(punctuation_mark)
 
-    return output_words, output_punctuation_marks
+    return output_words + ["</s>"], output_punctuation_marks + ["</s>"]
 
 def get_audio_features_from_file(path):
     return kaldi_io.SequentialBaseFloatMatrixReader(path)
@@ -86,10 +86,10 @@ if __name__ == "__main__":
 
         uttids = dict(zip(uttids, range(len(uttids))))
         num_utts = len(uttids)
-        words_shapes, words_dataset = create_numpy_array_dataset(h5file, '%s_words' % dataset, num_utts, 1, 'int32')
-        punctuation_marks_shapes, punctuation_marks_dataset = create_numpy_array_dataset(h5file, '%s_punctuation_marks' % dataset, num_utts, 1, 'int8')
-        audio_shapes, audio = create_numpy_array_dataset(h5file, '%s_audio' % dataset, num_utts, 2, 'float32')
-        words_ends_shapes, words_ends = create_numpy_array_dataset(h5file, '%s_words_ends' % dataset, num_utts, 1, 'int16')
+        words_shapes, words_dataset = create_numpy_array_dataset(h5file, 'words', num_utts, 1, 'int32')
+        punctuation_marks_shapes, punctuation_marks_dataset = create_numpy_array_dataset(h5file, 'punctuation_marks', num_utts, 1, 'int8')
+        audio_shapes, audio = create_numpy_array_dataset(h5file, 'audio', num_utts, 2, 'float32')
+        words_ends_shapes, words_ends = create_numpy_array_dataset(h5file, 'words_ends', num_utts, 1, 'int16')
 
         for dataset in datasets:
             data_dir = config["%s_data_dir" % dataset]

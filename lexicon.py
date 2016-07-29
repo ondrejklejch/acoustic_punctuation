@@ -10,5 +10,5 @@ def create_dictionary_from_lexicon(path, punctuation_marks):
     return dictionary
 
 def create_dictionary_from_punctuation_marks(punctuation_marks):
-    punctuation_marks = ["<SPACE>"] + punctuation_marks
+    punctuation_marks = ["<SPACE>"] + punctuation_marks + ["</s>"]
     return dict(zip(punctuation_marks, range(len(punctuation_marks))))
