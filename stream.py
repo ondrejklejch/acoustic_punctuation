@@ -9,8 +9,7 @@ from six.moves import cPickle
 
 
 def _length(sentence_pair):
-    """Assumes target is the last element in the tuple."""
-    return len(sentence_pair[-1])
+    return max([len(x) for x in sentence_pair])
 
 
 class PaddingWithEOS(Padding):

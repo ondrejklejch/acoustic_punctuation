@@ -16,7 +16,7 @@ from blocks.model import Model
 from blocks.select import Selector
 
 from checkpoint import CheckpointNMT, LoadNMT
-from model import BidirectionalEncoder, Decoder
+from model import BidirectionalEncoder, BidirectionalAudioEncoder, Decoder
 from sampling import F1Validator, Sampler
 
 try:
@@ -28,30 +28,53 @@ except ImportError:
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler())
 logger.setLevel(logging.INFO)
+
 theano.config.on_unused_input = 'warn'
+theano.config.exception_verbosity = 'low'
 
 
 def main(config, tr_stream, dev_stream, use_bokeh=False):
 
     # Create Theano variables
     logger.info('Creating theano variables')
-    print 'Creating theano variables'
-    input_words = tensor.lmatrix('words')
-    input_words_mask = tensor.matrix('words_mask')
-    punctuation_marks = tensor.lmatrix('punctuation_marks')
-    punctuation_marks_mask = tensor.matrix('punctuation_marks_mask')
-    sampling_input = tensor.lmatrix('input')
 
-    # Construct model
-    logger.info('Building RNN encoder-decoder')
-    encoder = BidirectionalEncoder(
-        config['src_vocab_size'], config['enc_embed'], config['enc_nhids'])
-    decoder = Decoder(
-        config['trg_vocab_size'], config['dec_embed'], config['dec_nhids'],
-        config['enc_nhids'] * 2)
-    cost = decoder.cost(
-        encoder.apply(input_words, input_words_mask),
-        input_words_mask, punctuation_marks, punctuation_marks_mask)
+    if config["input"] == "words":
+        input_words = tensor.lmatrix('words')
+        input_words_mask = tensor.matrix('words_mask')
+        punctuation_marks = tensor.lmatrix('punctuation_marks')
+        punctuation_marks_mask = tensor.matrix('punctuation_marks_mask')
+        sampling_input = tensor.lmatrix('input')
+
+        # Construct model
+        logger.info('Building RNN encoder-decoder')
+        encoder = BidirectionalEncoder(
+            config['src_vocab_size'], config['enc_embed'], config['enc_nhids'])
+        decoder = Decoder(
+            config['trg_vocab_size'], config['dec_embed'], config['dec_nhids'],
+            config['enc_nhids'] * 2)
+        cost = decoder.cost(
+            encoder.apply(input_words, input_words_mask),
+            input_words_mask, punctuation_marks, punctuation_marks_mask)
+    elif config["input"] == "audio":
+        audio = tensor.ftensor3('audio')
+        audio_mask = tensor.matrix('audio_mask')
+        words_ends = tensor.lmatrix('words_ends')
+        punctuation_marks = tensor.lmatrix('punctuation_marks')
+        punctuation_marks_mask = tensor.matrix('punctuation_marks_mask')
+        sampling_input = tensor.lmatrix('input')
+
+        # Construct model
+        logger.info('Building RNN encoder-decoder')
+        encoder = BidirectionalAudioEncoder(
+            config['audio_feat_size'], config['enc_embed'], config['enc_nhids'])
+        decoder = Decoder(
+            config['trg_vocab_size'], config['dec_embed'], config['dec_nhids'],
+            config['enc_nhids'] * 2)
+        cost = decoder.cost(
+            encoder.apply(audio, audio_mask, words_ends),
+            punctuation_marks_mask, punctuation_marks, punctuation_marks_mask)
+
+
 
     logger.info('Creating computational graph')
     cg = ComputationGraph(cost)
@@ -156,7 +179,8 @@ def main(config, tr_stream, dev_stream, use_bokeh=False):
     logger.info("Initializing training algorithm")
     algorithm = GradientDescent(
         cost=cost, parameters=cg.parameters,
-        step_rule=CompositeRule([StepClipping(config['step_clipping']), eval(config['step_rule'])()])
+        step_rule=CompositeRule([StepClipping(config['step_clipping']), eval(config['step_rule'])()]),
+        on_unused_sources='warn'
     )
 
     # Initialize main loop

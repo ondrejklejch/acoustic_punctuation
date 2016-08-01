@@ -26,16 +26,21 @@ def get_config():
 
     # Model related -----------------------------------------------------------
 
+    config['input'] = 'audio'
+    config['audio_feat_size'] = 43
+    config['take_every_nth'] = 3
+
+
     # Sequences longer than this will be discarded
     config['seq_len'] = 50
 
     # Number of hidden units in encoder/decoder GRU
-    config['enc_nhids'] = 512
-    config['dec_nhids'] = 512
+    config['enc_nhids'] = 256
+    config['dec_nhids'] = 256
 
     # Dimension of the word embedding matrix in encoder/decoder
-    config['enc_embed'] = 512
-    config['dec_embed'] = 512
+    config['enc_embed'] = 256
+    config['dec_embed'] = 256
 
     # Where to save model, this corresponds to 'prefix' in groundhog
     config['saveto'] = '/disk/data2/s1569734/acoustic_punctuation/nmt_punctuation_on_words_on_lm_data'
@@ -46,7 +51,7 @@ def get_config():
     config['batch_size'] = 80
 
     # This many batches will be read ahead and sorted
-    config['sort_k_batches'] = 100
+    config['sort_k_batches'] = 10
 
     # Optimization step rule
     config['step_rule'] = 'AdaDelta'
