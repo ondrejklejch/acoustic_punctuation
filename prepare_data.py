@@ -52,6 +52,9 @@ def get_time_boundaries_from_ctm_file(path):
             (uttid, _, start, duration, _) = line.strip().split()
             time_boundaries[uttid].append(int((float(start) + float(duration)) * 100))
 
+    for uttid in time_boundaries:
+        time_boundaries[uttid].append(-1)
+
     return time_boundaries.iteritems()
 
 def create_numpy_array_dataset(h5file, name, num_utts, ndim, dtype):

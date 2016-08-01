@@ -30,12 +30,7 @@ class PaddingWithEOS(Padding):
 
             shapes = [numpy.asarray(sample).shape for sample in source_data]
             lengths = [shape[0] for shape in shapes]
-
-            if source != "words_ends":
-                max_sequence_length = max(lengths)
-            else:
-                max_sequence_length = max(lengths) + 1
-
+            max_sequence_length = max(lengths)
             rest_shape = shapes[0][1:]
             if not all([shape[1:] == rest_shape for shape in shapes]):
                 raise ValueError("All dimensions except length must be equal")
