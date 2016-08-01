@@ -15,6 +15,8 @@ from blocks.search import BeamSearch
 from subprocess import Popen, PIPE
 
 logger = logging.getLogger(__name__)
+logger.addHandler(logging.StreamHandler())
+logger.setLevel(logging.INFO)
 
 
 class SamplingBase(object):
@@ -26,7 +28,7 @@ class SamplingBase(object):
 
     def _get_true_length(self, seq, vocab):
         try:
-            return seq.tolist().index(vocab['</S>']) + 1
+            return seq.tolist().index(vocab['</s>']) + 1
         except ValueError:
             return len(seq)
 
@@ -34,7 +36,7 @@ class SamplingBase(object):
         return [x if x < vocab_size else unk_idx for x in seq]
 
     def _idx_to_word(self, seq, ivocab):
-        return " ".join([ivocab.get(idx, "<UNK>") for idx in seq])
+        return " ".join([ivocab.get(idx, "<unk>") for idx in seq])
 
 
 class Sampler(SimpleExtension, SamplingBase):
@@ -74,7 +76,7 @@ class Sampler(SimpleExtension, SamplingBase):
         # WARNING: Source and target indices from data stream
         #  can be different
         batch = args[0]
-        batch_size = batch['source'].shape[0]
+        batch_size = batch['words'].shape[0]
         hook_samples = min(batch_size, self.hook_samples)
 
         # TODO: this is problematic for boundary conditions, eg. last batch
@@ -129,6 +131,9 @@ class F1Validator(SimpleExtension, SamplingBase):
         self.vocab = config["src_vocab"]
         self.unk_sym = config["unk_token"]
         self.eos_sym = config["eos_token"]
+        self.trg_vocab = config["trg_vocab"]
+        self.trg_ivocab = {v: k for k, v in self.trg_vocab.items()}
+        self.trg_eos_idx = self.trg_vocab[config["eos_token"]]
         self.unk_idx = self.vocab[self.unk_sym]
         self.eos_idx = self.vocab[self.eos_sym]
         self.best_models = []
@@ -138,12 +143,6 @@ class F1Validator(SimpleExtension, SamplingBase):
         # Create saving directory if it does not exist
         if not os.path.exists(self.config['saveto']):
             os.makedirs(self.config['saveto'])
-
-        if os.path.exists(self.config['val_set_grndtruth']):
-            self.references = []
-            with open(self.config['val_set_grndtruth'], 'r') as f:
-                for line in f:
-                    self.references.append(line.strip().split())
 
         if self.config['reload']:
             try:
@@ -176,13 +175,6 @@ class F1Validator(SimpleExtension, SamplingBase):
         val_start_time = time.time()
         total_cost = 0.0
 
-        # Get target vocabulary
-        sources = self._get_attr_rec(self.main_loop, 'data_stream')
-        trg_vocab = sources.data_streams[1].dataset.dictionary
-        self.trg_ivocab = {v: k for k, v in trg_vocab.items()}
-        trg_eos_sym = sources.data_streams[1].dataset.eos_token
-        self.trg_eos_idx = trg_vocab[trg_eos_sym]
-
         if self.verbose:
             ftrans = open(self.config['val_set_out'], 'w')
 
@@ -196,6 +188,7 @@ class F1Validator(SimpleExtension, SamplingBase):
             """
 
             seq = line[0]
+            reference = line[1]
             beam_size = min(self.config['beam_size'], len(seq) * (self.config['trg_vocab_size'] - 1))
             input_ = numpy.tile(seq, (beam_size, 1))
 
@@ -219,6 +212,7 @@ class F1Validator(SimpleExtension, SamplingBase):
 
                     # convert idx to words
                     trans_out = self._idx_to_word(trans_out, self.trg_ivocab)
+                    reference = self._idx_to_word(reference, self.trg_ivocab)
 
                 except ValueError:
                     logger.info(
@@ -228,7 +222,8 @@ class F1Validator(SimpleExtension, SamplingBase):
                 if j == 0:
                     # Compute F-Measure
                     keywords = ['<FULL_STOP>', '<COMMA>', '<QUESTION_MARK>', '<EXCLAMATION_MARK>', '<DOTS>']
-                    merged_tokens = zip(self.references[i], trans_out.split())
+
+                    merged_tokens = zip(reference.split(), trans_out.split())
                     for (x,y) in merged_tokens:
                         if x == y:
                             if x in keywords:
@@ -242,8 +237,8 @@ class F1Validator(SimpleExtension, SamplingBase):
                                 D += 1
 
                         # If beam returns too short answer
-                        if len(self.references[i]) > len(trans_out.split()):
-                            D += len([w for w in self.references[i][len(trans_out.split()):] if w not in keywords])
+                        if len(reference) > len(trans_out.split()):
+                            D += len([w for w in reference[len(trans_out.split()):] if w in keywords])
 
                     if self.verbose:
                         print(trans_out, file=ftrans)

@@ -96,4 +96,5 @@ def get_tr_stream(path, src_eos_idx, tgt_eos_idx, seq_len=50, batch_size=80, sor
 def get_dev_stream(path, **kwargs):
     """Setup development set stream if necessary."""
 
-    return DataStream(H5PYDataset(path, which_sets=('dev',), sources=('words',)))
+    dataset = H5PYDataset(path, which_sets=('dev',), sources=('words', 'punctuation_marks'))
+    return dataset.get_example_stream()

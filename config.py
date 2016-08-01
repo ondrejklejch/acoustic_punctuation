@@ -46,7 +46,7 @@ def get_config():
     config['batch_size'] = 80
 
     # This many batches will be read ahead and sorted
-    config['sort_k_batches'] = 12
+    config['sort_k_batches'] = 100
 
     # Optimization step rule
     config['step_rule'] = 'AdaDelta'
@@ -84,12 +84,6 @@ def get_config():
     # Use F1 validation
     config['f1_validation'] = True
 
-    # Validation set source file
-    config['val_set'] = datadir + 'dev.words'
-
-    # Validation set gold file
-    config['val_set_grndtruth'] = datadir + 'dev.punctuations'
-
     # Print validation output to file
     config['output_val_set'] = True
 
@@ -108,10 +102,10 @@ def get_config():
     config['reload'] = True
 
     # Save model after this many updates
-    config['save_freq'] = 500
+    config['save_freq'] = 1000
 
     # Show samples from model after this many updates
-    config['sampling_freq'] = 500
+    config['sampling_freq'] = 5000
 
     # Show this many samples at each sampling
     config['hook_samples'] = 2
