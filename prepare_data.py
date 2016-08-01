@@ -41,16 +41,17 @@ def text_to_words_and_punctuation_marks(text, punctuation_marks):
 
     return output_words + ["</s>"], output_punctuation_marks + ["</s>"]
 
-def get_audio_features_from_file(path):
-    return kaldi_io.SequentialBaseFloatMatrixReader(path)
+def get_audio_features_from_file(path, take_every_nth):
+    for (uttid, features) in kaldi_io.SequentialBaseFloatMatrixReader(path):
+        yield uttid, features[::take_every_nth]
 
-def get_time_boundaries_from_ctm_file(path):
+def get_time_boundaries_from_ctm_file(path, take_every_nth):
     time_boundaries = defaultdict(lambda: [])
 
     with open(path, 'r') as f:
         for line in f:
             (uttid, _, start, duration, _) = line.strip().split()
-            time_boundaries[uttid].append(int((float(start) + float(duration)) * 100))
+            time_boundaries[uttid].append(int((float(start) + float(duration)) * 100) / take_every_nth)
 
     for uttid in time_boundaries:
         time_boundaries[uttid].append(-1)
@@ -112,7 +113,7 @@ if __name__ == "__main__":
                 punctuation_marks_shapes[uttid] = punctuation_marks.shape
                 punctuation_marks_dataset[uttid] = punctuation_marks
 
-            for (uttid, features) in get_audio_features_from_file("scp:%s/feats.scp" % data_dir):
+            for (uttid, features) in get_audio_features_from_file("scp:%s/feats.scp" % data_dir, config["take_every_nth"]):
                 if uttid not in uttids:
                     print "audio %s not in uttids" % uttid
                     continue
@@ -122,7 +123,7 @@ if __name__ == "__main__":
                 audio[uttid] = features.ravel()
 
             alignment_dir = config["%s_alignment_dir" % dataset]
-            for (uttid, boundaries) in get_time_boundaries_from_ctm_file("%s/forced_alignment.txt" % alignment_dir):
+            for (uttid, boundaries) in get_time_boundaries_from_ctm_file("%s/forced_alignment.txt" % alignment_dir, config["take_every_nth"]):
                 if uttid not in uttids:
                     print "forced alignment %s not in uttids" % uttid
                     continue
