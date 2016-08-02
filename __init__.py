@@ -168,7 +168,7 @@ def main(config, tr_stream, dev_stream, use_bokeh=False):
     if config['f1_validation'] is not None:
         logger.info("Building f1 validator")
         extensions.append(
-            F1Validator(sampling_input, samples=samples, config=config,
+            F1Validator(samples=samples, config=config,
                           model=search_model, data_stream=dev_stream,
                           normalize=config['normalized_f1'],
                           every_n_batches=config['f1_val_freq']))

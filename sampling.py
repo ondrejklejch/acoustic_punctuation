@@ -12,7 +12,7 @@ from blocks.extensions import SimpleExtension
 from blocks.serialization import BRICK_DELIMITER
 from blocks.search import BeamSearch
 
-from subprocess import Popen, PIPE
+from collections import OrderedDict
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler())
@@ -116,12 +116,11 @@ class F1Validator(SimpleExtension, SamplingBase):
     # TODO: a lot has been changed in NMT, sync respectively
     """Implements early stopping based on F1 score."""
 
-    def __init__(self, source_sentence, samples, model, data_stream,
+    def __init__(self, samples, model, data_stream,
                  config, n_best=1, track_n_models=1,
                  normalize=True, **kwargs):
         # TODO: change config structure
         super(F1Validator, self).__init__(**kwargs)
-        self.source_sentence = source_sentence
         self.samples = samples
         self.model = model
         self.data_stream = data_stream
@@ -191,15 +190,20 @@ class F1Validator(SimpleExtension, SamplingBase):
             Load the sentence, retrieve the sample, write to file
             """
 
-            seq = line[0]
-            reference = line[1]
-            beam_size = min(self.config['beam_size'], len(seq) * (self.config['trg_vocab_size'] - 1))
-            input_ = numpy.tile(seq, (beam_size, 1))
+            def tile(x, beam_size):
+                return numpy.tile(x, (beam_size,) + (1,) * x.ndim)
+
+            beam_size = self.config['beam_size']
+            available_inputs = dict(zip(["sampling_%s" % x for x in self.data_stream.sources], line))
+            input_values = OrderedDict([(tensor, tile(available_inputs[name], beam_size)) for (name, tensor) in self.model.dict_of_inputs().iteritems()])
+            seq = available_inputs["sampling_words"]
+            reference = available_inputs["sampling_punctuation_marks"]
+
 
             # draw sample, checking to ensure we don't get an empty string back
             trans, costs = \
                 self.beam_search.search(
-                    input_values={self.source_sentence: input_},
+                    input_values=input_values,
                     max_length=len(seq), eol_symbol=self.trg_eos_idx,
                     ignore_first_eol=True)
 
@@ -252,17 +256,18 @@ class F1Validator(SimpleExtension, SamplingBase):
                 logger.info(
                     "Translated {} lines of validation set... F1 = {}, {}, {}, {}, {}".format(i, f1_score, C, S, I, D))
 
+        # extract the score
+        f1_score = self.compute_f1_score(C, S, I, D)
+        self.val_f1_curve.append(f1_score)
+        logger.info(f1_score)
+
         logger.info("Total cost of the validation: {}".format(total_cost))
+        logger.info("Translated {} lines of validation set... F1 = {}, {}, {}, {}, {}".format(i, f1_score, C, S, I, D))
         self.data_stream.reset()
         if self.verbose:
             ftrans.close()
 
         logger.info("Validation Took: {} minutes".format(float(time.time() - val_start_time) / 60.))
-
-        # extract the score
-        f1_score = self.compute_f1_score(C, S, I, D)
-        self.val_f1_curve.append(f1_score)
-        logger.info(f1_score)
 
         return f1_score
 
