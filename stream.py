@@ -53,11 +53,11 @@ class PaddingWithEOS(Padding):
 
 class _too_long(object):
     """Filters sequences longer than given sequence length."""
-    def __init__(self, seq_len=50):
+    def __init__(self, seq_len=500):
         self.seq_len = seq_len
 
     def __call__(self, sentence_pair):
-        return len(sentence_pair[-1]) <= self.seq_len
+        return max([len(x) for x in sentence_pair]) <= self.seq_len
 
 
 def get_tr_stream(path, src_eos_idx, tgt_eos_idx, seq_len=50, batch_size=80, sort_k_batches=12, **kwargs):

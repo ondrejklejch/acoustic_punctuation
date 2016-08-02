@@ -32,7 +32,7 @@ def get_config():
 
 
     # Sequences longer than this will be discarded
-    config['seq_len'] = 50
+    config['seq_len'] = 500
 
     # Number of hidden units in encoder/decoder GRU
     config['enc_nhids'] = 256
