@@ -59,6 +59,7 @@ def main(config, tr_stream, dev_stream, use_bokeh=False):
         audio = tensor.ftensor3('audio')
         audio_mask = tensor.matrix('audio_mask')
         words_ends = tensor.lmatrix('words_ends')
+        words_ends_mask = tensor.matrix('words_ends_mask')
         punctuation_marks = tensor.lmatrix('punctuation_marks')
         punctuation_marks_mask = tensor.matrix('punctuation_marks_mask')
         sampling_input = tensor.lmatrix('input')
@@ -71,7 +72,7 @@ def main(config, tr_stream, dev_stream, use_bokeh=False):
             config['trg_vocab_size'], config['dec_embed'], config['dec_nhids'],
             config['enc_nhids'] * 2)
         cost = decoder.cost(
-            encoder.apply(audio, audio_mask, words_ends),
+            encoder.apply(audio, audio_mask, words_ends, words_ends_mask),
             punctuation_marks_mask, punctuation_marks, punctuation_marks_mask)
 
 

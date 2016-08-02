@@ -120,6 +120,15 @@ class BidirectionalAudioEncoder(Initializable):
             activations=[Tanh()],
             dims=[feature_size, embedding_dim],
             name='audio_transformation')
+        self.embedding = BidirectionalWMT15(
+            GatedRecurrent(activation=Tanh(), dim=state_dim), name="audio_embeddings")
+        self.embedding_fwd_fork = Fork(
+            [name for name in self.embedding.prototype.apply.sequences
+             if name != 'mask'], prototype=Linear(), name='embedding_fwd_fork')
+        self.embedding_back_fork = Fork(
+            [name for name in self.embedding.prototype.apply.sequences
+             if name != 'mask'], prototype=Linear(), name='embedding_back_fork')
+
         self.bidir = BidirectionalWMT15(
             GatedRecurrent(activation=Tanh(), dim=state_dim))
         self.fwd_fork = Fork(
@@ -129,37 +138,52 @@ class BidirectionalAudioEncoder(Initializable):
             [name for name in self.bidir.prototype.apply.sequences
              if name != 'mask'], prototype=Linear(), name='back_fork')
 
-        self.children = [self.audio_transformer, self.bidir,
-                         self.fwd_fork, self.back_fork]
+        self.children = [self.audio_transformer, self.bidir, self.embedding,
+                         self.fwd_fork, self.back_fork, self.embedding_fwd_fork, self.embedding_back_fork]
 
     def _push_allocation_config(self):
-        self.fwd_fork.input_dim = self.embedding_dim
-        self.fwd_fork.output_dims = [self.bidir.children[0].get_dim(name)
-                                     for name in self.fwd_fork.output_names]
-        self.back_fork.input_dim = self.embedding_dim
-        self.back_fork.output_dims = [self.bidir.children[1].get_dim(name)
-                                      for name in self.back_fork.output_names]
+        self.embedding_fwd_fork.input_dim = self.embedding_dim
+        self.embedding_fwd_fork.output_dims = [self.embedding.children[0].get_dim(name) for name in self.embedding_fwd_fork.output_names]
+        self.embedding_back_fork.input_dim = self.embedding_dim
+        self.embedding_back_fork.output_dims = [self.embedding.children[1].get_dim(name) for name in self.embedding_back_fork.output_names]
 
-    @application(inputs=['audio', 'audio_mask', 'words_ends'],
+        self.fwd_fork.input_dim = 2 * self.embedding_dim
+        self.fwd_fork.output_dims = [self.bidir.children[0].get_dim(name) for name in self.fwd_fork.output_names]
+        self.back_fork.input_dim = 2 * self.embedding_dim
+        self.back_fork.output_dims = [self.bidir.children[1].get_dim(name) for name in self.back_fork.output_names]
+
+
+    @application(inputs=['audio', 'audio_mask', 'words_ends', 'words_ends_mask'],
                  outputs=['representation'])
-    def apply(self, audio, audio_mask, words_ends):
+    def apply(self, audio, audio_mask, words_ends, words_ends_mask):
         batch_size = audio.shape[0]
 
-        # Time as first dimension
         embeddings = self.audio_transformer.apply(audio.reshape((-1, self.feature_size)))
         embeddings = embeddings.reshape((batch_size, -1, self.embedding_dim)).dimshuffle(1, 0, 2)
         audio_mask = audio_mask.dimshuffle(1, 0)
 
-        representation = self.bidir.apply(
-            merge(self.fwd_fork.apply(embeddings, as_dict=True),
+        embeddings = self.embedding.apply(
+            merge(self.embedding_fwd_fork.apply(embeddings, as_dict=True),
                   {'mask': audio_mask}),
-            merge(self.back_fork.apply(embeddings, as_dict=True),
+            merge(self.embedding_back_fork.apply(embeddings, as_dict=True),
                   {'mask': audio_mask})
         )
 
         rows = tensor.arange(batch_size).reshape((batch_size, 1))
-        representation = representation.dimshuffle(1, 0, 2)
-        return representation[rows, words_ends].dimshuffle(1, 0, 2)
+        embeddings = embeddings.dimshuffle(1, 0, 2)[rows, words_ends].dimshuffle(1, 0, 2)
+
+        words_ends_mask = words_ends_mask.dimshuffle(1, 0)
+        representation = self.bidir.apply(
+            merge(self.fwd_fork.apply(embeddings, as_dict=True),
+                  {'mask': words_ends_mask}),
+            merge(self.back_fork.apply(embeddings, as_dict=True),
+                  {'mask': words_ends_mask})
+        )
+
+        return representation
+
+
+
 
 class GRUInitialState(GatedRecurrent):
     """Gated Recurrent with special initial state.
