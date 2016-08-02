@@ -116,12 +116,7 @@ class BidirectionalAudioEncoder(Initializable):
         self.embedding_dim = embedding_dim
         self.state_dim = state_dim
 
-        self.audio_transformer = MLP(
-            activations=[Tanh()],
-            dims=[feature_size, embedding_dim],
-            name='audio_transformation')
-        self.embedding = BidirectionalWMT15(
-            GatedRecurrent(activation=Tanh(), dim=state_dim), name="audio_embeddings")
+        self.embedding = BidirectionalWMT15(GatedRecurrent(activation=Tanh(), dim=state_dim), name="audio_embeddings")
         self.embedding_fwd_fork = Fork(
             [name for name in self.embedding.prototype.apply.sequences
              if name != 'mask'], prototype=Linear(), name='embedding_fwd_fork')
@@ -129,8 +124,7 @@ class BidirectionalAudioEncoder(Initializable):
             [name for name in self.embedding.prototype.apply.sequences
              if name != 'mask'], prototype=Linear(), name='embedding_back_fork')
 
-        self.bidir = BidirectionalWMT15(
-            GatedRecurrent(activation=Tanh(), dim=state_dim))
+        self.bidir = BidirectionalWMT15(GatedRecurrent(activation=Tanh(), dim=state_dim), name="audio_representation")
         self.fwd_fork = Fork(
             [name for name in self.bidir.prototype.apply.sequences
              if name != 'mask'], prototype=Linear(), name='fwd_fork')
@@ -138,13 +132,13 @@ class BidirectionalAudioEncoder(Initializable):
             [name for name in self.bidir.prototype.apply.sequences
              if name != 'mask'], prototype=Linear(), name='back_fork')
 
-        self.children = [self.audio_transformer, self.bidir, self.embedding,
+        self.children = [self.bidir, self.embedding,
                          self.fwd_fork, self.back_fork, self.embedding_fwd_fork, self.embedding_back_fork]
 
     def _push_allocation_config(self):
-        self.embedding_fwd_fork.input_dim = self.embedding_dim
+        self.embedding_fwd_fork.input_dim = self.feature_size
         self.embedding_fwd_fork.output_dims = [self.embedding.children[0].get_dim(name) for name in self.embedding_fwd_fork.output_names]
-        self.embedding_back_fork.input_dim = self.embedding_dim
+        self.embedding_back_fork.input_dim = self.feature_size
         self.embedding_back_fork.output_dims = [self.embedding.children[1].get_dim(name) for name in self.embedding_back_fork.output_names]
 
         self.fwd_fork.input_dim = 2 * self.embedding_dim
@@ -157,15 +151,13 @@ class BidirectionalAudioEncoder(Initializable):
                  outputs=['representation'])
     def apply(self, audio, audio_mask, words_ends, words_ends_mask):
         batch_size = audio.shape[0]
-
-        embeddings = self.audio_transformer.apply(audio.reshape((-1, self.feature_size)))
-        embeddings = embeddings.reshape((batch_size, -1, self.embedding_dim)).dimshuffle(1, 0, 2)
+        audio = audio.dimshuffle(1, 0, 2)
         audio_mask = audio_mask.dimshuffle(1, 0)
 
         embeddings = self.embedding.apply(
-            merge(self.embedding_fwd_fork.apply(embeddings, as_dict=True),
+            merge(self.embedding_fwd_fork.apply(audio, as_dict=True),
                   {'mask': audio_mask}),
-            merge(self.embedding_back_fork.apply(embeddings, as_dict=True),
+            merge(self.embedding_back_fork.apply(audio, as_dict=True),
                   {'mask': audio_mask})
         )
 
@@ -290,10 +282,13 @@ class Decoder(Initializable):
             target_sentence_mask.shape[1]
 
     @application
-    def generate(self, source_sentence, representation, **kwargs):
+    def generate(self, representation, **kwargs):
+        length = representation.shape[0]
+        batch_size = representation.shape[1]
+
         return self.sequence_generator.generate(
-            n_steps=2 * source_sentence.shape[1],
-            batch_size=source_sentence.shape[0],
+            n_steps=2 * length,
+            batch_size=batch_size,
             attended=representation,
-            attended_mask=tensor.ones(source_sentence.shape).T,
+            attended_mask=tensor.ones((batch_size, length)).T,
             **kwargs)

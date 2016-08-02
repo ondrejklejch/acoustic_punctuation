@@ -80,29 +80,33 @@ class Sampler(SimpleExtension, SamplingBase):
         hook_samples = min(batch_size, self.hook_samples)
 
         # TODO: this is problematic for boundary conditions, eg. last batch
-        sample_idx = numpy.random.choice(
-            batch_size, hook_samples, replace=False)
-        src_batch = batch[self.main_loop.data_stream.mask_sources[0]]
-        trg_batch = batch[self.main_loop.data_stream.mask_sources[1]]
+        sample_idx = numpy.random.choice(batch_size, hook_samples, replace=False)
 
-        input_ = src_batch[sample_idx, :]
-        target_ = trg_batch[sample_idx, :]
+        words_batch = batch[self.main_loop.data_stream.mask_sources[0]][sample_idx, :]
+        audio_batch = batch[self.main_loop.data_stream.mask_sources[1]][sample_idx, :]
+        words_ends_batch = batch[self.main_loop.data_stream.mask_sources[2]][sample_idx, :]
+        punctuation_marks_batch = batch[self.main_loop.data_stream.mask_sources[3]][sample_idx, :]
 
         # Sample
         print()
         for i in range(hook_samples):
-            input_length = self._get_true_length(input_[i], self.src_vocab)
-            target_length = self._get_true_length(target_[i], self.trg_vocab)
+            length = self._get_true_length(punctuation_marks_batch[i], self.trg_vocab)
 
-            inp = input_[i, :input_length]
-            _1, outputs, _2, _3, costs = (self.sampling_fn(inp[None, :]))
+            available_inputs = {
+                'sampling_words': words_batch[i][:length][None, :],
+                'sampling_words_ends': words_ends_batch[i][:length][None, :],
+                'sampling_audio': audio_batch[i][:numpy.max(numpy.nonzero(numpy.sum(audio_batch[i], 1))) + 1][None, :],
+            }
+
+            inputs = [available_inputs[name] for name in self.model.dict_of_inputs().keys()]
+
+            _1, outputs, _2, _3, costs = (self.sampling_fn(*inputs))
             outputs = outputs.flatten()
             costs = costs.T
 
             sample_length = self._get_true_length(outputs, self.trg_vocab)
-
-            print("Input : ", self._idx_to_word(input_[i][:input_length], self.src_ivocab))
-            print("Target: ", self._idx_to_word(target_[i][:target_length], self.trg_ivocab))
+            print("Input : ", self._idx_to_word(words_batch[i][:length], self.src_ivocab))
+            print("Target: ", self._idx_to_word(punctuation_marks_batch[i][:length], self.trg_ivocab))
             print("Sample: ", self._idx_to_word(outputs[:sample_length], self.trg_ivocab))
             print("Sample cost: ", costs[:sample_length].sum())
             print()

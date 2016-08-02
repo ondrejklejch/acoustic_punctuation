@@ -43,7 +43,6 @@ def main(config, tr_stream, dev_stream, use_bokeh=False):
         input_words_mask = tensor.matrix('words_mask')
         punctuation_marks = tensor.lmatrix('punctuation_marks')
         punctuation_marks_mask = tensor.matrix('punctuation_marks_mask')
-        sampling_input = tensor.lmatrix('input')
 
         # Construct model
         logger.info('Building RNN encoder-decoder')
@@ -62,7 +61,6 @@ def main(config, tr_stream, dev_stream, use_bokeh=False):
         words_ends_mask = tensor.matrix('words_ends_mask')
         punctuation_marks = tensor.lmatrix('punctuation_marks')
         punctuation_marks_mask = tensor.matrix('punctuation_marks_mask')
-        sampling_input = tensor.lmatrix('input')
 
         # Construct model
         logger.info('Building RNN encoder-decoder')
@@ -87,6 +85,7 @@ def main(config, tr_stream, dev_stream, use_bokeh=False):
     encoder.push_initialization_config()
     decoder.push_initialization_config()
     encoder.bidir.prototype.weights_init = Orthogonal()
+    encoder.embedding.prototype.weights_init = Orthogonal()
     decoder.transition.weights_init = Orthogonal()
     encoder.initialize()
     decoder.initialize()
@@ -139,9 +138,17 @@ def main(config, tr_stream, dev_stream, use_bokeh=False):
     # Set up beam search and sampling computation graphs if necessary
     if config['hook_samples'] >= 1 or config['f1_validation'] is not None:
         logger.info("Building sampling model")
-        sampling_representation = encoder.apply(
-            sampling_input, tensor.ones(sampling_input.shape))
-        generated = decoder.generate(sampling_input, sampling_representation)
+        if config["input"] == "words":
+            sampling_input_words = tensor.lmatrix('sampling_words')
+            sampling_representation = encoder.apply(sampling_input_words, tensor.ones_like(sampling_input_words))
+        elif config["input"] == "audio":
+            sampling_audio = tensor.ftensor3('sampling_audio')
+            sampling_audio_mask = tensor.ones((sampling_audio.shape[0], sampling_audio.shape[1]))
+            sampling_words_ends = tensor.lmatrix('sampling_words_ends')
+            sampling_words_ends_mask = tensor.ones((sampling_words_ends.shape[0], sampling_words_ends.shape[1]))
+            sampling_representation = encoder.apply(sampling_audio, sampling_audio_mask, sampling_words_ends, sampling_words_ends_mask)
+
+        generated = decoder.generate(sampling_representation)
         search_model = Model(generated)
         _, samples = VariableFilter(
             bricks=[decoder.sequence_generator], name="outputs")(
