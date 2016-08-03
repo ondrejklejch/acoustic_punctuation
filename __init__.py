@@ -85,7 +85,8 @@ def main(config, tr_stream, dev_stream, use_bokeh=False):
     encoder.push_initialization_config()
     decoder.push_initialization_config()
     encoder.bidir.prototype.weights_init = Orthogonal()
-    encoder.embedding.prototype.weights_init = Orthogonal()
+    if config["input"] == "audio":
+        encoder.embedding.prototype.weights_init = Orthogonal()
     decoder.transition.weights_init = Orthogonal()
     encoder.initialize()
     decoder.initialize()
@@ -140,7 +141,8 @@ def main(config, tr_stream, dev_stream, use_bokeh=False):
         logger.info("Building sampling model")
         if config["input"] == "words":
             sampling_input_words = tensor.lmatrix('sampling_words')
-            sampling_representation = encoder.apply(sampling_input_words, tensor.ones_like(sampling_input_words))
+            sampling_input_words_mask = tensor.ones((sampling_input_words.shape[0], sampling_input_words.shape[1]))
+            sampling_representation = encoder.apply(sampling_input_words, sampling_input_words_mask)
         elif config["input"] == "audio":
             sampling_audio = tensor.ftensor3('sampling_audio')
             sampling_audio_mask = tensor.ones((sampling_audio.shape[0], sampling_audio.shape[1]))

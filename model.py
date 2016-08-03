@@ -90,20 +90,19 @@ class BidirectionalEncoder(Initializable):
         self.back_fork.output_dims = [self.bidir.children[1].get_dim(name)
                                       for name in self.back_fork.output_names]
 
-    @application(inputs=['source_sentence', 'source_sentence_mask'],
+    @application(inputs=['words', 'words_mask'],
                  outputs=['representation'])
-    def apply(self, source_sentence, source_sentence_mask):
+    def apply(self, words, words_mask):
         # Time as first dimension
-        source_sentence = source_sentence.T
-        source_sentence_mask = source_sentence_mask.T
+        words = words.T
+        words_mask = words_mask.T
 
-        embeddings = self.lookup.apply(source_sentence)
-
+        embeddings = self.lookup.apply(words)
         representation = self.bidir.apply(
             merge(self.fwd_fork.apply(embeddings, as_dict=True),
-                  {'mask': source_sentence_mask}),
+                  {'mask': words_mask}),
             merge(self.back_fork.apply(embeddings, as_dict=True),
-                  {'mask': source_sentence_mask})
+                  {'mask': words_mask})
         )
         return representation
 
