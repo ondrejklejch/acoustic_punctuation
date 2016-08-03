@@ -51,7 +51,7 @@ def get_time_boundaries_from_ctm_file(path, take_every_nth):
     with open(path, 'r') as f:
         for line in f:
             (uttid, _, start, duration, _) = line.strip().split()
-            time_boundaries[uttid].append(int((float(start) + float(duration)) * 100) / take_every_nth)
+            time_boundaries[uttid].append((int((float(start) + float(duration)) * 100) / take_every_nth) - 1)
 
     for uttid in time_boundaries:
         time_boundaries[uttid].append(-1)
@@ -147,8 +147,18 @@ if __name__ == "__main__":
             idxs = []
             data_dir = config["%s_data_dir" % dataset]
             for uttid in get_uttids_from_text_file("%s/text" % data_dir):
-                if(audio_shapes[uttids[uttid]][1] == 43):
+                if uttid in uttids and (audio_shapes[uttids[uttid]][1] == 43):
                     idxs.append(uttids[uttid])
+
+                if uttid in uttids and len(words_ends[uttids[uttid]]) == 0:
+                    uttid = uttids[uttid]
+
+                    words = words_shapes[uttid][0]
+                    frames = audio_shapes[uttid][0]
+                    step = float(frames - 1) / words
+                    boundaries = np.array([int(step * (i+1)) for i in range(words)], dtype=np.int16)
+                    words_ends_shapes[uttid] = boundaries.shape
+                    words_ends[uttid] = boundaries.ravel()
 
             indices_name = "%s_indices" % dataset
             h5file[indices_name] = np.array(idxs)
