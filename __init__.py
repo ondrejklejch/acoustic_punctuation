@@ -5,7 +5,7 @@ from collections import Counter
 from theano import tensor
 from toolz import merge
 
-from blocks.algorithms import (GradientDescent, StepClipping, AdaDelta, CompositeRule)
+from blocks.algorithms import (GradientDescent, StepClipping, AdaDelta, CompositeRule, RemoveNotFinite)
 from blocks.extensions import FinishAfter, Printing
 from blocks.extensions.monitoring import TrainingDataMonitoring
 from blocks.filter import VariableFilter
@@ -46,14 +46,9 @@ def main(config, tr_stream, dev_stream, use_bokeh=False):
 
         # Construct model
         logger.info('Building RNN encoder-decoder')
-        encoder = BidirectionalEncoder(
-            config['src_vocab_size'], config['enc_embed'], config['enc_nhids'])
-        decoder = Decoder(
-            config['trg_vocab_size'], config['dec_embed'], config['dec_nhids'],
-            config['enc_nhids'] * 2)
-        cost = decoder.cost(
-            encoder.apply(input_words, input_words_mask),
-            input_words_mask, punctuation_marks, punctuation_marks_mask)
+        encoder = BidirectionalEncoder(config['src_vocab_size'], config['enc_embed'], config['enc_nhids'])
+        decoder = Decoder(config['trg_vocab_size'], config['dec_embed'], config['dec_nhids'], config['enc_nhids'] * 2)
+        cost = decoder.cost(encoder.apply(input_words, input_words_mask), input_words_mask, punctuation_marks, punctuation_marks_mask)
     elif config["input"] == "audio":
         audio = tensor.ftensor3('audio')
         audio_mask = tensor.matrix('audio_mask')
@@ -64,32 +59,64 @@ def main(config, tr_stream, dev_stream, use_bokeh=False):
 
         # Construct model
         logger.info('Building RNN encoder-decoder')
-        encoder = BidirectionalAudioEncoder(
-            config['audio_feat_size'], config['enc_embed'], config['enc_nhids'])
-        decoder = Decoder(
-            config['trg_vocab_size'], config['dec_embed'], config['dec_nhids'],
-            config['enc_nhids'] * 2)
+        encoder = BidirectionalAudioEncoder(config['audio_feat_size'], config['enc_embed'], config['enc_nhids'])
+        decoder = Decoder(config['trg_vocab_size'], config['dec_embed'], config['dec_nhids'], config['enc_nhids'] * 2)
+        cost = decoder.cost(encoder.apply(audio, audio_mask, words_ends, words_ends_mask), punctuation_marks_mask, punctuation_marks, punctuation_marks_mask)
+    elif config["input"] == "both":
+        input_words = tensor.lmatrix('words')
+        input_words_mask = tensor.matrix('words_mask')
+        audio = tensor.ftensor3('audio')
+        audio_mask = tensor.matrix('audio_mask')
+        words_ends = tensor.lmatrix('words_ends')
+        words_ends_mask = tensor.matrix('words_ends_mask')
+        punctuation_marks = tensor.lmatrix('punctuation_marks')
+        punctuation_marks_mask = tensor.matrix('punctuation_marks_mask')
+
+        # Construct model
+        logger.info('Building RNN encoder-decoder')
+        words_encoder = BidirectionalEncoder(config['src_vocab_size'], config['enc_embed'], config['enc_nhids'])
+        audio_encoder = BidirectionalAudioEncoder(config['audio_feat_size'], config['enc_embed'], config['enc_nhids'])
+        decoder = Decoder(config['trg_vocab_size'], config['dec_embed'], config['dec_nhids'], config['enc_nhids'] * 4)
         cost = decoder.cost(
-            encoder.apply(audio, audio_mask, words_ends, words_ends_mask),
+            theano.tensor.concatenate([words_encoder.apply(input_words, input_words_mask), audio_encoder.apply(audio, audio_mask, words_ends, words_ends_mask)], axis=2),
             punctuation_marks_mask, punctuation_marks, punctuation_marks_mask)
-
-
 
     logger.info('Creating computational graph')
     cg = ComputationGraph(cost)
 
     # Initialize model
     logger.info('Initializing model')
-    encoder.weights_init = decoder.weights_init = IsotropicGaussian(config['weight_scale'])
-    encoder.biases_init = decoder.biases_init = Constant(0)
-    encoder.push_initialization_config()
+    decoder.weights_init = IsotropicGaussian(config['weight_scale'])
+    decoder.biases_init = Constant(0)
     decoder.push_initialization_config()
-    encoder.bidir.prototype.weights_init = Orthogonal()
-    if config["input"] == "audio":
-        encoder.embedding.prototype.weights_init = Orthogonal()
     decoder.transition.weights_init = Orthogonal()
-    encoder.initialize()
     decoder.initialize()
+
+    if config["input"] == "words":
+        encoder.weights_init = IsotropicGaussian(config['weight_scale'])
+        encoder.biases_init = Constant(0)
+        encoder.push_initialization_config()
+        encoder.bidir.prototype.weights_init = Orthogonal()
+        encoder.initialize()
+    if config["input"] == "audio":
+        encoder.weights_init = IsotropicGaussian(config['weight_scale'])
+        encoder.biases_init = Constant(0)
+        encoder.push_initialization_config()
+        encoder.bidir.prototype.weights_init = Orthogonal()
+        encoder.embedding.prototype.weights_init = Orthogonal()
+        encoder.initialize()
+    if config["input"] == "both":
+        words_encoder.weights_init = audio_encoder.weights_init = IsotropicGaussian(config['weight_scale'])
+        words_encoder.biases_init = audio_encoder.biases_init = Constant(0)
+        words_encoder.push_initialization_config()
+        audio_encoder.push_initialization_config()
+
+        words_encoder.bidir.prototype.weights_init = Orthogonal()
+        audio_encoder.bidir.prototype.weights_init = Orthogonal()
+        audio_encoder.embedding.prototype.weights_init = Orthogonal()
+
+        words_encoder.initialize()
+        audio_encoder.initialize()
 
     # apply dropout for regularization
     if config['dropout'] < 1.0:
@@ -117,7 +144,10 @@ def main(config, tr_stream, dev_stream, use_bokeh=False):
     logger.info("Total number of parameters: {}".format(len(shapes)))
 
     # Print parameter names
-    enc_dec_param_dict = merge(Selector(encoder).get_parameters(), Selector(decoder).get_parameters())
+    if config["input"] == "both":
+        enc_dec_param_dict = merge(Selector(audio_encoder).get_parameters(), Selector(words_encoder).get_parameters(), Selector(decoder).get_parameters())
+    else:
+        enc_dec_param_dict = merge(Selector(encoder).get_parameters(), Selector(decoder).get_parameters())
     logger.info("Parameter names: ")
     for name, value in enc_dec_param_dict.items():
         logger.info('    {:15}: {}'.format(value.get_value().shape, name))
@@ -149,6 +179,18 @@ def main(config, tr_stream, dev_stream, use_bokeh=False):
             sampling_words_ends = tensor.lmatrix('sampling_words_ends')
             sampling_words_ends_mask = tensor.ones((sampling_words_ends.shape[0], sampling_words_ends.shape[1]))
             sampling_representation = encoder.apply(sampling_audio, sampling_audio_mask, sampling_words_ends, sampling_words_ends_mask)
+        elif config["input"] == "both":
+            sampling_input_words = tensor.lmatrix('sampling_words')
+            sampling_input_words_mask = tensor.ones((sampling_input_words.shape[0], sampling_input_words.shape[1]))
+            sampling_audio = tensor.ftensor3('sampling_audio')
+            sampling_audio_mask = tensor.ones((sampling_audio.shape[0], sampling_audio.shape[1]))
+            sampling_words_ends = tensor.lmatrix('sampling_words_ends')
+            sampling_words_ends_mask = tensor.ones((sampling_words_ends.shape[0], sampling_words_ends.shape[1]))
+
+            words_representation = words_encoder.apply(sampling_input_words, sampling_input_words_mask)
+            audio_representation = audio_encoder.apply(sampling_audio, sampling_audio_mask, sampling_words_ends, sampling_words_ends_mask)
+
+            sampling_representation = theano.tensor.concatenate([words_representation, audio_representation], axis=2)
 
         generated = decoder.generate(sampling_representation)
         search_model = Model(generated)
@@ -189,7 +231,7 @@ def main(config, tr_stream, dev_stream, use_bokeh=False):
     logger.info("Initializing training algorithm")
     algorithm = GradientDescent(
         cost=cost, parameters=cg.parameters,
-        step_rule=CompositeRule([StepClipping(config['step_clipping']), eval(config['step_rule'])()]),
+        step_rule=CompositeRule([StepClipping(config['step_clipping']), eval(config['step_rule'])(), RemoveNotFinite()]),
         on_unused_sources='warn'
     )
 

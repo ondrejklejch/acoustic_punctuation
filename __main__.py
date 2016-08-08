@@ -35,7 +35,9 @@ args = parser.parse_args()
 
 if __name__ == "__main__":
     config = getattr(config, args.proto)()
-    logger.info("Model options:\n{}".format(pprint.pformat(config)))
+    #logger.info("Model options:\n{}".format(pprint.pformat(config)))
 
-    data_path = "%s/data.h5" % config["data_dir"]
-    main(config, get_tr_stream(data_path, config["src_eos_idx"], config["trg_eos_idx"]), get_dev_stream(data_path), args.bokeh)
+    data_path = "%s/data_cmvn.h5" % config["data_dir"]
+    tr_stream = get_tr_stream(data_path, config["src_eos_idx"], config["trg_eos_idx"], seq_len=config["seq_len"], batch_size=config["batch_size"], sort_k_batches=config["sort_k_batches"])
+    dev_stream = get_dev_stream(data_path)
+    main(config, tr_stream, dev_stream, args.bokeh)
