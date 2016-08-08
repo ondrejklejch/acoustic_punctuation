@@ -43,7 +43,12 @@ def text_to_words_and_punctuation_marks(text, punctuation_marks):
 
 def get_audio_features_from_file(path, take_every_nth):
     for (uttid, features) in kaldi_io.SequentialBaseFloatMatrixReader(path):
-        yield uttid, features[::take_every_nth]
+        features = features[::take_every_nth]
+        mean = np.mean(features, 0)
+        std = np.std(features, 0)
+        features = (features - mean) / std
+
+        yield uttid, features
 
 def get_time_boundaries_from_ctm_file(path, take_every_nth):
     time_boundaries = defaultdict(lambda: [])
