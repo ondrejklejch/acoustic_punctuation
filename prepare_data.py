@@ -95,6 +95,9 @@ if __name__ == "__main__":
 
         uttids = dict(zip(uttids, range(len(uttids))))
         num_utts = len(uttids)
+
+        text = h5file.create_dataset('text', (num_utts,), dtype=h5py.special_dtype(vlen=unicode))
+        uttids_dataset = h5file.create_dataset('uttids', (num_utts,), dtype=h5py.special_dtype(vlen=unicode))
         words_shapes, words_dataset = create_numpy_array_dataset(h5file, 'words', num_utts, 1, 'int32')
         punctuation_marks_shapes, punctuation_marks_dataset = create_numpy_array_dataset(h5file, 'punctuation_marks', num_utts, 1, 'int8')
         audio_shapes, audio = create_numpy_array_dataset(h5file, 'audio', num_utts, 2, 'float32')
@@ -108,8 +111,11 @@ if __name__ == "__main__":
                     print "Text %s not in uttids" % uttid
                     continue
 
+                text_uttid = uttid
                 uttid = uttids[uttid]
 
+                text[uttid] = " ".join(words)
+                uttids_dataset[uttid] = text_uttid
                 words = np.array([words_dictionary.get(word, words_dictionary["<unk>"]) for word in words], dtype=np.int32)
                 words_shapes[uttid] = words.shape
                 words_dataset[uttid] = words
