@@ -2,21 +2,17 @@ import logging
 import theano
 
 from collections import Counter
-from theano import tensor
-from toolz import merge
 
 from blocks.algorithms import (GradientDescent, StepClipping, AdaDelta, CompositeRule, RemoveNotFinite)
 from blocks.extensions import FinishAfter, Printing
 from blocks.extensions.monitoring import TrainingDataMonitoring
 from blocks.filter import VariableFilter
 from blocks.graph import ComputationGraph, apply_noise, apply_dropout
-from blocks.initialization import IsotropicGaussian, Orthogonal, Constant
 from blocks.main_loop import MainLoop
 from blocks.model import Model
-from blocks.select import Selector
 
+from helpers import create_model
 from checkpoint import CheckpointNMT, LoadNMT
-from model import BidirectionalEncoder, BidirectionalAudioEncoder, Decoder
 from sampling import F1Validator, Sampler
 
 try:
@@ -35,88 +31,13 @@ theano.config.exception_verbosity = 'low'
 
 def main(config, tr_stream, dev_stream, use_bokeh=False):
 
-    # Create Theano variables
-    logger.info('Creating theano variables')
+    logger.info('Building RNN encoder-decoder')
+    cost, samples, search_model = create_model(config)
 
-    if config["input"] == "words":
-        input_words = tensor.lmatrix('words')
-        input_words_mask = tensor.matrix('words_mask')
-        punctuation_marks = tensor.lmatrix('punctuation_marks')
-        punctuation_marks_mask = tensor.matrix('punctuation_marks_mask')
-
-        # Construct model
-        logger.info('Building RNN encoder-decoder')
-        encoder = BidirectionalEncoder(config['src_vocab_size'], config['enc_embed'], config['enc_nhids'])
-        decoder = Decoder(config['trg_vocab_size'], config['dec_embed'], config['dec_nhids'], config['enc_nhids'] * 2)
-        cost = decoder.cost(encoder.apply(input_words, input_words_mask), input_words_mask, punctuation_marks, punctuation_marks_mask)
-    elif config["input"] == "audio":
-        audio = tensor.ftensor3('audio')
-        audio_mask = tensor.matrix('audio_mask')
-        words_ends = tensor.lmatrix('words_ends')
-        words_ends_mask = tensor.matrix('words_ends_mask')
-        punctuation_marks = tensor.lmatrix('punctuation_marks')
-        punctuation_marks_mask = tensor.matrix('punctuation_marks_mask')
-
-        # Construct model
-        logger.info('Building RNN encoder-decoder')
-        encoder = BidirectionalAudioEncoder(config['audio_feat_size'], config['enc_embed'], config['enc_nhids'])
-        decoder = Decoder(config['trg_vocab_size'], config['dec_embed'], config['dec_nhids'], config['enc_nhids'] * 2)
-        cost = decoder.cost(encoder.apply(audio, audio_mask, words_ends, words_ends_mask), punctuation_marks_mask, punctuation_marks, punctuation_marks_mask)
-    elif config["input"] == "both":
-        input_words = tensor.lmatrix('words')
-        input_words_mask = tensor.matrix('words_mask')
-        audio = tensor.ftensor3('audio')
-        audio_mask = tensor.matrix('audio_mask')
-        words_ends = tensor.lmatrix('words_ends')
-        words_ends_mask = tensor.matrix('words_ends_mask')
-        punctuation_marks = tensor.lmatrix('punctuation_marks')
-        punctuation_marks_mask = tensor.matrix('punctuation_marks_mask')
-
-        # Construct model
-        logger.info('Building RNN encoder-decoder')
-        words_encoder = BidirectionalEncoder(config['src_vocab_size'], config['enc_embed'], config['enc_nhids'])
-        audio_encoder = BidirectionalAudioEncoder(config['audio_feat_size'], config['enc_embed'], config['enc_nhids'])
-        decoder = Decoder(config['trg_vocab_size'], config['dec_embed'], config['dec_nhids'], config['enc_nhids'] * 4)
-        cost = decoder.cost(
-            theano.tensor.concatenate([words_encoder.apply(input_words, input_words_mask), audio_encoder.apply(audio, audio_mask, words_ends, words_ends_mask)], axis=2),
-            punctuation_marks_mask, punctuation_marks, punctuation_marks_mask)
-
-    logger.info('Creating computational graph')
+    logger.info("Building model")
     cg = ComputationGraph(cost)
+    training_model = Model(cost)
 
-    # Initialize model
-    logger.info('Initializing model')
-    decoder.weights_init = IsotropicGaussian(config['weight_scale'])
-    decoder.biases_init = Constant(0)
-    decoder.push_initialization_config()
-    decoder.transition.weights_init = Orthogonal()
-    decoder.initialize()
-
-    if config["input"] == "words":
-        encoder.weights_init = IsotropicGaussian(config['weight_scale'])
-        encoder.biases_init = Constant(0)
-        encoder.push_initialization_config()
-        encoder.bidir.prototype.weights_init = Orthogonal()
-        encoder.initialize()
-    if config["input"] == "audio":
-        encoder.weights_init = IsotropicGaussian(config['weight_scale'])
-        encoder.biases_init = Constant(0)
-        encoder.push_initialization_config()
-        encoder.bidir.prototype.weights_init = Orthogonal()
-        encoder.embedding.prototype.weights_init = Orthogonal()
-        encoder.initialize()
-    if config["input"] == "both":
-        words_encoder.weights_init = audio_encoder.weights_init = IsotropicGaussian(config['weight_scale'])
-        words_encoder.biases_init = audio_encoder.biases_init = Constant(0)
-        words_encoder.push_initialization_config()
-        audio_encoder.push_initialization_config()
-
-        words_encoder.bidir.prototype.weights_init = Orthogonal()
-        audio_encoder.bidir.prototype.weights_init = Orthogonal()
-        audio_encoder.embedding.prototype.weights_init = Orthogonal()
-
-        words_encoder.initialize()
-        audio_encoder.initialize()
 
     # apply dropout for regularization
     if config['dropout'] < 1.0:
@@ -124,38 +45,6 @@ def main(config, tr_stream, dev_stream, use_bokeh=False):
         logger.info('Applying dropout')
         dropout_inputs = [x for x in cg.intermediary_variables if x.name == 'maxout_apply_output']
         cg = apply_dropout(cg, dropout_inputs, config['dropout'])
-
-    # Apply weight noise for regularization
-    if config['weight_noise_ff'] > 0.0:
-        logger.info('Applying weight noise to ff layers')
-        enc_params = Selector(encoder.lookup).get_params().values()
-        enc_params += Selector(encoder.fwd_fork).get_params().values()
-        enc_params += Selector(encoder.back_fork).get_params().values()
-        dec_params = Selector(decoder.sequence_generator.readout).get_params().values()
-        dec_params += Selector(decoder.sequence_generator.fork).get_params().values()
-        dec_params += Selector(decoder.state_init).get_params().values()
-        cg = apply_noise(cg, enc_params+dec_params, config['weight_noise_ff'])
-
-    # Print shapes
-    shapes = [param.get_value().shape for param in cg.parameters]
-    logger.info("Parameter shapes: ")
-    for shape, count in Counter(shapes).most_common():
-        logger.info('    {:15}: {}'.format(shape, count))
-    logger.info("Total number of parameters: {}".format(len(shapes)))
-
-    # Print parameter names
-    if config["input"] == "both":
-        enc_dec_param_dict = merge(Selector(audio_encoder).get_parameters(), Selector(words_encoder).get_parameters(), Selector(decoder).get_parameters())
-    else:
-        enc_dec_param_dict = merge(Selector(encoder).get_parameters(), Selector(decoder).get_parameters())
-    logger.info("Parameter names: ")
-    for name, value in enc_dec_param_dict.items():
-        logger.info('    {:15}: {}'.format(value.get_value().shape, name))
-    logger.info("Total number of parameters: {}".format(len(enc_dec_param_dict)))
-
-    # Set up training model
-    logger.info("Building model")
-    training_model = Model(cost)
 
     # Set extensions
     logger.info("Initializing extensions")
@@ -165,38 +54,6 @@ def main(config, tr_stream, dev_stream, use_bokeh=False):
         Printing(after_batch=True),
         CheckpointNMT(config['saveto'], every_n_batches=config['save_freq'])
     ]
-
-    # Set up beam search and sampling computation graphs if necessary
-    if config['hook_samples'] >= 1 or config['f1_validation'] is not None:
-        logger.info("Building sampling model")
-        if config["input"] == "words":
-            sampling_input_words = tensor.lmatrix('sampling_words')
-            sampling_input_words_mask = tensor.ones((sampling_input_words.shape[0], sampling_input_words.shape[1]))
-            sampling_representation = encoder.apply(sampling_input_words, sampling_input_words_mask)
-        elif config["input"] == "audio":
-            sampling_audio = tensor.ftensor3('sampling_audio')
-            sampling_audio_mask = tensor.ones((sampling_audio.shape[0], sampling_audio.shape[1]))
-            sampling_words_ends = tensor.lmatrix('sampling_words_ends')
-            sampling_words_ends_mask = tensor.ones((sampling_words_ends.shape[0], sampling_words_ends.shape[1]))
-            sampling_representation = encoder.apply(sampling_audio, sampling_audio_mask, sampling_words_ends, sampling_words_ends_mask)
-        elif config["input"] == "both":
-            sampling_input_words = tensor.lmatrix('sampling_words')
-            sampling_input_words_mask = tensor.ones((sampling_input_words.shape[0], sampling_input_words.shape[1]))
-            sampling_audio = tensor.ftensor3('sampling_audio')
-            sampling_audio_mask = tensor.ones((sampling_audio.shape[0], sampling_audio.shape[1]))
-            sampling_words_ends = tensor.lmatrix('sampling_words_ends')
-            sampling_words_ends_mask = tensor.ones((sampling_words_ends.shape[0], sampling_words_ends.shape[1]))
-
-            words_representation = words_encoder.apply(sampling_input_words, sampling_input_words_mask)
-            audio_representation = audio_encoder.apply(sampling_audio, sampling_audio_mask, sampling_words_ends, sampling_words_ends_mask)
-
-            sampling_representation = theano.tensor.concatenate([words_representation, audio_representation], axis=2)
-
-        generated = decoder.generate(sampling_representation)
-        search_model = Model(generated)
-        _, samples = VariableFilter(
-            bricks=[decoder.sequence_generator], name="outputs")(
-                ComputationGraph(generated[1]))  # generated[1] is next_outputs
 
     # Add sampling
     if config['hook_samples'] >= 1:
@@ -220,12 +77,6 @@ def main(config, tr_stream, dev_stream, use_bokeh=False):
     # Reload model if necessary
     if config['reload']:
         extensions.append(LoadNMT(config['saveto']))
-
-    # Plot cost in bokeh if necessary
-    if use_bokeh and BOKEH_AVAILABLE:
-        extensions.append(
-            Plot('Cs-En', channels=[['decoder_cost_cost']],
-                 after_batch=True))
 
     # Set up training algorithm
     logger.info("Initializing training algorithm")

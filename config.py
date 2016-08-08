@@ -64,12 +64,6 @@ def get_config():
 
     # Regularization related --------------------------------------------------
 
-    # Weight noise flag for feed forward layers
-    config['weight_noise_ff'] = False
-
-    # Weight noise flag for recurrent layers
-    config['weight_noise_rec'] = False
-
     # Dropout ratio, applied only after readout maxout
     config['dropout'] = 0.5
 
