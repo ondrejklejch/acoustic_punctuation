@@ -26,10 +26,10 @@ theano.config.on_unused_input = 'warn'
 def tile(x, beam_size):
     return numpy.tile(x, (beam_size,) + (1,) * x.ndim)
 
-def main(config, model_path, data_path, input, output):
+def main(config, model_dir, model_filename, data_path, input, output):
     logger.info("Loading the model..")
     cost, samples, search_model = create_model(config)
-    loader = LoadNMT(model_path)
+    loader = LoadNMT(model_dir, model_filename)
     loader.set_model_parameters(search_model, loader.load_parameters())
     beam_search = BeamSearch(samples=samples)
 
@@ -107,8 +107,9 @@ if __name__ == "__main__":
     from config import get_config
     config = get_config()
 
-    config["input"] = "both"
-    model_path = "/disk/scratch2/s1569734/acoustic_punctuation/nmt_punctuation_on_both_full_concatenated/"
+    config["input"] = "words"
+    model_dir = "/disk/scratch2/s1569734/acoustic_punctuation/nmt_punctuation_on_multitask-decoder/"
+    model_filename = "best_f1_model_1470888492_F10.55.npz"
     data_path = "%s/data_cmvn_with_text.h5" % config["data_dir"]
 
-    main(config, model_path, data_path, "../nmt_punctuation/dev_raw.txt", "punctuated_dev.txt")
+    main(config, model_dir, model_filename, data_path, "../nmt_punctuation/dev_raw.txt", "punctuated_dev.txt")

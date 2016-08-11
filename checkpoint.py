@@ -24,7 +24,7 @@ class SaveLoadUtils(object):
 
     @property
     def path_to_parameters(self):
-        return os.path.join(self.folder, 'params.npz')
+        return os.path.join(self.folder, self.filename)
 
     @property
     def path_to_iteration_state(self):
@@ -58,8 +58,9 @@ class CheckpointNMT(SimpleExtension, SaveLoadUtils):
 
     """
 
-    def __init__(self, saveto, **kwargs):
+    def __init__(self, saveto, filename="params.npz", **kwargs):
         self.folder = saveto
+        self.filename = filename
         kwargs.setdefault("after_training", True)
         super(CheckpointNMT, self).__init__(**kwargs)
 
@@ -103,8 +104,9 @@ class CheckpointNMT(SimpleExtension, SaveLoadUtils):
 class LoadNMT(TrainingExtension, SaveLoadUtils):
     """Loads parameters log and iterations state."""
 
-    def __init__(self, saveto, **kwargs):
+    def __init__(self, saveto, filename="params.npz", **kwargs):
         self.folder = saveto
+        self.filename = filename
         super(LoadNMT, self).__init__(saveto, **kwargs)
 
     def before_training(self):
