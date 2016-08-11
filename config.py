@@ -2,7 +2,7 @@ from lexicon import create_dictionary_from_lexicon, create_dictionary_from_punct
 
 def get_config():
     config = {}
-    config['lexicon'] = "/disk/data2/s1569734/bbc_original/local/resources/mgb.150k.wlist"
+    config['lexicon'] = "/disk/scratch2/s1569734/acoustic_punctuation/mgb.150k.wlist"
     config['punctuation_marks'] = ["<FULL_STOP>", "<COMMA>", "<QUESTION_MARK>", "<EXCLAMATION_MARK>", "<DOTS>"]
 
     config["src_vocab"] = create_dictionary_from_lexicon(config["lexicon"], config["punctuation_marks"])
@@ -16,13 +16,13 @@ def get_config():
     config['unk_token'] = '<unk>'
 
 
-    config['train_data_dir'] = "/disk/data2/s1569734/bbc_original/data/train_mer10/"
-    config['train_alignment_dir'] = "/disk/data2/s1569734/bbc_without_punctuation/exp/alignment/train_mer10_without_punct/"
+    config['train_data_dir'] = "/disk/scratch2/s1569734/bbc_original/data/train_mer10/"
+    config['train_alignment_dir'] = "/disk/scratch2/s1569734/bbc_without_punctuation/exp/alignment/train_mer10_without_punct/"
 
-    config['dev_data_dir'] = "/disk/data2/s1569734/bbc_original/data/dev_for_punctuation_addition/"
-    config['dev_alignment_dir'] = "/disk/data2/s1569734/bbc_without_punctuation/exp/alignment/dev_for_punctuation_addition/"
+    config['dev_data_dir'] = "/disk/scratch2/s1569734/bbc_original/data/dev_for_punctuation_addition/"
+    config['dev_alignment_dir'] = "/disk/scratch2/s1569734/bbc_without_punctuation/exp/alignment/dev_for_punctuation_addition/"
 
-    config['data_dir'] = "/disk/data2/s1569734/acoustic_punctuation/"
+    config['data_dir'] = "/disk/scratch2/s1569734/acoustic_punctuation/"
 
     # Model related -----------------------------------------------------------
 
@@ -32,7 +32,7 @@ def get_config():
 
 
     # Sequences longer than this will be discarded
-    config['seq_len'] = 500
+    config['seq_len'] = 1000
 
     # Number of hidden units in encoder/decoder GRU
     config['enc_nhids'] = 256
@@ -43,15 +43,15 @@ def get_config():
     config['dec_embed'] = 256
 
     # Where to save model, this corresponds to 'prefix' in groundhog
-    config['saveto'] = '/disk/data2/s1569734/acoustic_punctuation/nmt_punctuation_on_words_on_lm_data'
+    config['saveto'] = '/disk/scratch2/s1569734/acoustic_punctuation/nmt_punctuation_on_%s_global_cmvn/' % config['input']
 
     # Optimization related ----------------------------------------------------
 
     # Batch size
-    config['batch_size'] = 80
+    config['batch_size'] = 50
 
     # This many batches will be read ahead and sorted
-    config['sort_k_batches'] = 10
+    config['sort_k_batches'] = 50
 
     # Optimization step rule
     config['step_rule'] = 'AdaDelta'
@@ -95,19 +95,19 @@ def get_config():
     # Timing/monitoring related -----------------------------------------------
 
     # Maximum number of updates
-    config['finish_after'] = 1000000
+    config['finish_after'] = 100000
 
     # Reload model from files if exist
     config['reload'] = True
 
     # Save model after this many updates
-    config['save_freq'] = 1000
+    config['save_freq'] = 500
 
     # Show samples from model after this many updates
-    config['sampling_freq'] = 5000
+    config['sampling_freq'] = 1000
 
     # Show this many samples at each sampling
-    config['hook_samples'] = 2
+    config['hook_samples'] = 10
 
     # Validate f1 after this many updates
     config['f1_val_freq'] = 5000

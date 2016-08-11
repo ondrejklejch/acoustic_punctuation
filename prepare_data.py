@@ -96,7 +96,7 @@ def create_numpy_array_dataset(h5file, name, num_utts, ndim, dtype):
 
 if __name__ == "__main__":
     config = get_config()
-    data_file = "%s/data.h5" % config["data_dir"]
+    data_file = "%s/data_global_cmvn.h5" % config["data_dir"]
     datasets = ["train", "dev"]
 
     with h5py.File(data_file, 'a') as h5file:
