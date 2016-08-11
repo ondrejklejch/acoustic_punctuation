@@ -41,11 +41,26 @@ def text_to_words_and_punctuation_marks(text, punctuation_marks):
 
     return output_words + ["</s>"], output_punctuation_marks + ["</s>"]
 
-def get_audio_features_from_file(path, take_every_nth):
+def get_mean_std_from_audio_features(path):
+    sum = np.zeros((43,))
+    sum_sq = np.zeros((43,))
+    n = 0
+
+    with kaldi_io.SequentialBaseFloatMatrixReader(path) as reader:
+        for name,feats in reader:
+            nframes, nfeats = feats.shape
+            n += nframes
+            sum += feats.sum(0)
+            sum_sq += (feats*feats).sum(0)
+
+    mean = np.asarray(sum/n, dtype=kaldi_io.KALDI_BASE_FLOAT())
+    std = np.asarray(np.sqrt(sum_sq/n - mean**2), dtype=kaldi_io.KALDI_BASE_FLOAT())
+
+    return mean, std
+
+def get_audio_features_from_file(path, take_every_nth, mean, std):
     for (uttid, features) in kaldi_io.SequentialBaseFloatMatrixReader(path):
         features = features[::take_every_nth]
-        mean = np.mean(features, 0)
-        std = np.std(features, 0)
         features = (features - mean) / std
 
         yield uttid, features
@@ -103,6 +118,8 @@ if __name__ == "__main__":
         audio_shapes, audio = create_numpy_array_dataset(h5file, 'audio', num_utts, 2, 'float32')
         words_ends_shapes, words_ends = create_numpy_array_dataset(h5file, 'words_ends', num_utts, 1, 'int16')
 
+
+        mean, std = get_mean_std_from_audio_features("scp:%s/feats.scp" % config["train_data_dir"])
         for dataset in datasets:
             data_dir = config["%s_data_dir" % dataset]
 
@@ -124,7 +141,7 @@ if __name__ == "__main__":
                 punctuation_marks_shapes[uttid] = punctuation_marks.shape
                 punctuation_marks_dataset[uttid] = punctuation_marks
 
-            for (uttid, features) in get_audio_features_from_file("scp:%s/feats.scp" % data_dir, config["take_every_nth"]):
+            for (uttid, features) in get_audio_features_from_file("scp:%s/feats.scp" % data_dir, config["take_every_nth"], mean, std):
                 if uttid not in uttids:
                     print "audio %s not in uttids" % uttid
                     continue
