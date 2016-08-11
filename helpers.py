@@ -25,14 +25,36 @@ def create_model(config):
     elif config["input"] == "both":
         words_encoder, words_training_representation, words_sampling_representation = create_word_encoder(config)
         audio_encoder, audio_training_representation, audio_sampling_representation = create_audio_encoder(config)
-        training_representation = tensor.concatenate([words_training_representation, audio_training_representation], axis=2)
-        sampling_representation = tensor.concatenate([words_sampling_representation, audio_sampling_representation], axis=2)
+
+        def merge_representations(words, audio):
+            return tensor.max(tensor.stack([words, audio], axis=0), axis=0)
+
+        training_representation = merge_representations(words_training_representation, audio_training_representation)
+        sampling_representation = merge_representations(words_sampling_representation, audio_sampling_representation)
         models = [words_encoder, audio_encoder]
 
     decoder, cost, samples, search_model = create_decoder(config, training_representation, sampling_representation)
     print_parameteters(models + [decoder])
 
     return cost, samples, search_model
+
+def create_multitask_model(config):
+    words_encoder, words_training_representation, words_sampling_representation = create_word_encoder(config)
+    audio_encoder, audio_training_representation, audio_sampling_representation = create_audio_encoder(config)
+    models = [words_encoder, audio_encoder]
+
+    decoder, words_cost, words_samples, words_search_model = create_decoder(config, words_training_representation, words_sampling_representation)
+    audio_cost, audio_samples, audio_search_model = use_decoder_on_representations(decoder, audio_training_representation, audio_sampling_representation)
+
+    print_parameteters(models + [decoder])
+    words_cost = words_cost + audio_cost
+
+    cost = words_cost + audio_cost
+    cost.name = "cost"
+
+    return cost, words_samples, words_search_model
+
+
 
 def create_word_encoder(config):
     encoder = BidirectionalEncoder(config['src_vocab_size'], config['enc_embed'], config['enc_nhids'])
@@ -45,6 +67,7 @@ def create_word_encoder(config):
     input_words = tensor.lmatrix('words')
     input_words_mask = tensor.matrix('words_mask')
     training_representation = encoder.apply(input_words, input_words_mask)
+    training_representation.name = "words_representation"
 
     sampling_input_words = tensor.lmatrix('sampling_words')
     sampling_input_words_mask = tensor.ones((sampling_input_words.shape[0], sampling_input_words.shape[1]))
@@ -66,6 +89,7 @@ def create_audio_encoder(config):
     words_ends = tensor.lmatrix('words_ends')
     words_ends_mask = tensor.matrix('words_ends_mask')
     training_representation = encoder.apply(audio, audio_mask, words_ends, words_ends_mask)
+    training_representation.name = "audio_representation"
 
     sampling_audio = tensor.ftensor3('sampling_audio')
     sampling_audio_mask = tensor.ones((sampling_audio.shape[0], sampling_audio.shape[1]))
@@ -76,18 +100,18 @@ def create_audio_encoder(config):
     return encoder, training_representation, sampling_representation
 
 def create_decoder(config, training_representation, sampling_representation):
-    if config["input"] == "both":
-        input_size = config['enc_nhids'] * 4
-    else:
-        input_size = config['enc_nhids'] * 2
-
-    decoder = Decoder(config['trg_vocab_size'], config['dec_embed'], config['dec_nhids'], input_size)
+    decoder = Decoder(config['trg_vocab_size'], config['dec_embed'], config['dec_nhids'], config['enc_nhids'] * 2)
     decoder.weights_init = IsotropicGaussian(config['weight_scale'])
     decoder.biases_init = Constant(0)
     decoder.push_initialization_config()
     decoder.transition.weights_init = Orthogonal()
     decoder.initialize()
 
+    cost, samples, search_model = use_decoder_on_representations(decoder, training_representation, sampling_representation)
+
+    return decoder, cost, samples, search_model
+
+def use_decoder_on_representations(decoder, training_representation, sampling_representation):
     punctuation_marks = tensor.lmatrix('punctuation_marks')
     punctuation_marks_mask = tensor.matrix('punctuation_marks_mask')
     cost = decoder.cost(training_representation, punctuation_marks_mask, punctuation_marks, punctuation_marks_mask)
@@ -96,7 +120,7 @@ def create_decoder(config, training_representation, sampling_representation):
     search_model = Model(generated)
     _, samples = VariableFilter(bricks=[decoder.sequence_generator], name="outputs")(ComputationGraph(generated[1]))
 
-    return decoder, cost, samples, search_model
+    return cost, samples, search_model
 
 
 def print_parameteters(models):

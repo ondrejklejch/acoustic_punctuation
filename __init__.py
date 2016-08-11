@@ -11,7 +11,7 @@ from blocks.graph import ComputationGraph, apply_noise, apply_dropout
 from blocks.main_loop import MainLoop
 from blocks.model import Model
 
-from helpers import create_model
+from helpers import create_model, create_multitask_model
 from checkpoint import CheckpointNMT, LoadNMT
 from sampling import F1Validator, Sampler
 
@@ -33,6 +33,7 @@ def main(config, tr_stream, dev_stream, use_bokeh=False):
 
     logger.info('Building RNN encoder-decoder')
     cost, samples, search_model = create_model(config)
+    #cost, samples, search_model = create_multitask_model(config)
 
     logger.info("Building model")
     cg = ComputationGraph(cost)
