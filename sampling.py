@@ -43,7 +43,7 @@ class Sampler(SimpleExtension, SamplingBase):
     """Random Sampling from model."""
 
     def __init__(self, model, data_stream, hook_samples=1,
-                 src_vocab=None, trg_vocab=None, src_ivocab=None,
+                 src_vocab=None, trg_vocab=None, src_ivocab=None, phones_vocab=None,
                  trg_ivocab=None, src_vocab_size=None, **kwargs):
         super(Sampler, self).__init__(**kwargs)
         self.model = model
@@ -53,6 +53,7 @@ class Sampler(SimpleExtension, SamplingBase):
         self.trg_vocab = trg_vocab
         self.src_ivocab = src_ivocab
         self.trg_ivocab = trg_ivocab
+        self.phones_vocab = phones_vocab
         self.src_vocab_size = src_vocab_size
         self.is_synced = False
         self.sampling_fn = model.get_theano_function()
@@ -86,19 +87,24 @@ class Sampler(SimpleExtension, SamplingBase):
         audio_batch = batch[self.main_loop.data_stream.mask_sources[1]][sample_idx, :]
         words_ends_batch = batch[self.main_loop.data_stream.mask_sources[2]][sample_idx, :]
         punctuation_marks_batch = batch[self.main_loop.data_stream.mask_sources[3]][sample_idx, :]
+        phones_batch = batch[self.main_loop.data_stream.mask_sources[4]][sample_idx, :]
+        phones_words_ends_batch = batch[self.main_loop.data_stream.mask_sources[5]][sample_idx, :]
 
         # Sample
         print()
         for i in range(hook_samples):
             length = self._get_true_length(punctuation_marks_batch[i], self.trg_vocab)
+            phones_length = numpy.max(phones_words_ends_batch[i]) + 1
 
             available_inputs = {
                 'sampling_words': words_batch[i][:length][None, :],
                 'sampling_words_ends': words_ends_batch[i][:length][None, :],
+                'sampling_phones': phones_batch[i][:phones_length][None, :],
+                'sampling_phones_words_ends': phones_words_ends_batch[i][:length][None, :],
                 'sampling_audio': audio_batch[i][:numpy.max(numpy.nonzero(numpy.sum(audio_batch[i], 1))) + 1][None, :],
             }
 
-            inputs = [available_inputs[name] for name in self.model.dict_of_inputs().keys()]
+            inputs = [available_inputs[input.name] for input in self.model.inputs]
 
             _1, outputs, _2, _3, costs = (self.sampling_fn(*inputs))
             outputs = outputs.flatten()
@@ -195,7 +201,7 @@ class F1Validator(SimpleExtension, SamplingBase):
 
             beam_size = self.config['beam_size']
             available_inputs = dict(zip(["sampling_%s" % x for x in self.data_stream.sources], line))
-            input_values = OrderedDict([(tensor, tile(available_inputs[name], beam_size)) for (name, tensor) in self.model.dict_of_inputs().iteritems()])
+            input_values = OrderedDict([(input, tile(available_inputs[input.name], beam_size)) for input in self.model.inputs])
             seq = available_inputs["sampling_words"]
             reference = available_inputs["sampling_punctuation_marks"]
 

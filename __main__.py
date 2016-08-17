@@ -37,7 +37,7 @@ if __name__ == "__main__":
     config = getattr(config, args.proto)()
     #logger.info("Model options:\n{}".format(pprint.pformat(config)))
 
-    data_path = "%s/data_global_cmvn.h5" % config["data_dir"]
-    tr_stream = get_tr_stream(data_path, config["src_eos_idx"], config["trg_eos_idx"], seq_len=config["seq_len"], batch_size=config["batch_size"], sort_k_batches=config["sort_k_batches"])
+    data_path = "%s/data_global_cmvn_with_phones.h5" % config["data_dir"]
+    tr_stream = get_tr_stream(data_path, config["src_eos_idx"], config["phones"]["sil"], config["trg_eos_idx"], seq_len=config["seq_len"], batch_size=config["batch_size"], sort_k_batches=config["sort_k_batches"])
     dev_stream = get_dev_stream(data_path)
     main(config, tr_stream, dev_stream, args.bokeh)

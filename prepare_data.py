@@ -16,13 +16,14 @@ def get_uttids_from_text_file(path):
 
     return list(uttids)
 
-def get_utterances_from_text_file(path, punctuation_marks):
+def get_utterances_from_text_file(path, punctuation_marks, lexicon):
     with open(path, 'r') as f:
         for line in f:
             (uttid, text) = line.strip().split(None, 1)
             (utt_words, utt_punctuation_marks) = text_to_words_and_punctuation_marks(text, punctuation_marks)
+            (utt_phones, utt_phones_words_ends) = text_to_phones(utt_words, lexicon)
 
-            yield uttid, utt_words, utt_punctuation_marks
+            yield uttid, utt_words, utt_punctuation_marks, utt_phones, utt_phones_words_ends
 
 def text_to_words_and_punctuation_marks(text, punctuation_marks):
     output_words = []
@@ -40,6 +41,20 @@ def text_to_words_and_punctuation_marks(text, punctuation_marks):
         output_punctuation_marks.append(punctuation_mark)
 
     return output_words + ["</s>"], output_punctuation_marks + ["</s>"]
+
+def text_to_phones(words, lexicon):
+    phones = []
+    phones_words_ends = []
+    length = 0
+
+    for word in words:
+        word_phones = lexicon.get(word, lexicon["<unk>"])
+        length += len(word_phones)
+
+        phones.extend(word_phones)
+        phones_words_ends.append(length - 1)
+
+    return phones, phones_words_ends
 
 def get_mean_std_from_audio_features(path):
     sum = np.zeros((43,))
@@ -96,11 +111,13 @@ def create_numpy_array_dataset(h5file, name, num_utts, ndim, dtype):
 
 if __name__ == "__main__":
     config = get_config()
-    data_file = "%s/data_global_cmvn.h5" % config["data_dir"]
+    data_file = "%s/data_global_cmvn_with_phones.h5" % config["data_dir"]
     datasets = ["train", "dev"]
 
     with h5py.File(data_file, 'a') as h5file:
         words_dictionary = config["src_vocab"]
+        phones_dictionary = config["phones"]
+        lexicon = config["lexicon"]
         punctuation_marks_dictionary = config["trg_vocab"]
 
         uttids = []
@@ -114,6 +131,8 @@ if __name__ == "__main__":
         text = h5file.create_dataset('text', (num_utts,), dtype=h5py.special_dtype(vlen=unicode))
         uttids_dataset = h5file.create_dataset('uttids', (num_utts,), dtype=h5py.special_dtype(vlen=unicode))
         words_shapes, words_dataset = create_numpy_array_dataset(h5file, 'words', num_utts, 1, 'int32')
+        phones_shapes, phones_dataset = create_numpy_array_dataset(h5file, 'phones', num_utts, 1, 'int32')
+        phones_words_ends_shapes, phones_words_ends_dataset = create_numpy_array_dataset(h5file, 'phones_words_ends', num_utts, 1, 'int16')
         punctuation_marks_shapes, punctuation_marks_dataset = create_numpy_array_dataset(h5file, 'punctuation_marks', num_utts, 1, 'int8')
         audio_shapes, audio = create_numpy_array_dataset(h5file, 'audio', num_utts, 2, 'float32')
         words_ends_shapes, words_ends = create_numpy_array_dataset(h5file, 'words_ends', num_utts, 1, 'int16')
@@ -123,7 +142,7 @@ if __name__ == "__main__":
         for dataset in datasets:
             data_dir = config["%s_data_dir" % dataset]
 
-            for (uttid, words, punctuation_marks) in get_utterances_from_text_file("%s/text" % data_dir, config["punctuation_marks"]):
+            for (uttid, words, punctuation_marks, phones, phones_words_ends) in get_utterances_from_text_file("%s/text" % data_dir, config["punctuation_marks"], lexicon):
                 if uttid not in uttids:
                     print "Text %s not in uttids" % uttid
                     continue
@@ -140,6 +159,13 @@ if __name__ == "__main__":
                 punctuation_marks = np.array([punctuation_marks_dictionary[punctuation_mark] for punctuation_mark in punctuation_marks], dtype=np.int8)
                 punctuation_marks_shapes[uttid] = punctuation_marks.shape
                 punctuation_marks_dataset[uttid] = punctuation_marks
+
+                phones = np.array([phones_dictionary.get(phone) for phone in phones], dtype=np.int8)
+                phones_shapes[uttid] = phones.shape
+                phones_dataset[uttid] = phones
+                phones_words_ends = np.array(phones_words_ends, dtype=np.int16)
+                phones_words_ends_shapes[uttid] = phones_words_ends.shape
+                phones_words_ends_dataset[uttid] = phones_words_ends
 
             for (uttid, features) in get_audio_features_from_file("scp:%s/feats.scp" % data_dir, config["take_every_nth"], mean, std):
                 if uttid not in uttids:
