@@ -89,6 +89,7 @@ class Sampler(SimpleExtension, SamplingBase):
         punctuation_marks_batch = batch[self.main_loop.data_stream.mask_sources[3]][sample_idx, :]
         phones_batch = batch[self.main_loop.data_stream.mask_sources[4]][sample_idx, :]
         phones_words_ends_batch = batch[self.main_loop.data_stream.mask_sources[5]][sample_idx, :]
+        phones_words_acoustic_ends_batch = batch[self.main_loop.data_stream.mask_sources[6]][sample_idx, :]
 
         # Sample
         print()
@@ -100,6 +101,7 @@ class Sampler(SimpleExtension, SamplingBase):
                 'sampling_words': words_batch[i][:length][None, :],
                 'sampling_words_ends': words_ends_batch[i][:length][None, :],
                 'sampling_phones': phones_batch[i][:phones_length][None, :],
+                'sampling_phones_words_acoustic_ends': phones_words_acoustic_ends_batch[i][:phones_length][None, :],
                 'sampling_phones_words_ends': phones_words_ends_batch[i][:length][None, :],
                 'sampling_audio': audio_batch[i][:numpy.max(numpy.nonzero(numpy.sum(audio_batch[i], 1))) + 1][None, :],
             }
@@ -204,7 +206,6 @@ class F1Validator(SimpleExtension, SamplingBase):
             input_values = OrderedDict([(input, tile(available_inputs[input.name], beam_size)) for input in self.model.inputs])
             seq = available_inputs["sampling_words"]
             reference = available_inputs["sampling_punctuation_marks"]
-
 
             # draw sample, checking to ensure we don't get an empty string back
             trans, costs = \

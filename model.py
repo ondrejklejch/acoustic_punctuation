@@ -243,6 +243,94 @@ class BidirectionalPhonesEncoder(Initializable):
         return representation
 
 
+class BidirectionalPhonemeAudioEncoder(Initializable):
+
+    def __init__(self, feature_size, embedding_dim, state_dim, **kwargs):
+        super(BidirectionalPhonemeAudioEncoder, self).__init__(**kwargs)
+        self.feature_size = feature_size
+        self.embedding_dim = embedding_dim
+        self.state_dim = state_dim
+
+        self.audio_embedding = BidirectionalWMT15(GatedRecurrent(activation=Tanh(), dim=state_dim), name="audio_embeddings")
+        self.audio_fwd_fork = Fork(
+            [name for name in self.audio_embedding.prototype.apply.sequences
+             if name != 'mask'], prototype=Linear(), name='audio_fwd_fork')
+        self.audio_back_fork = Fork(
+            [name for name in self.audio_embedding.prototype.apply.sequences
+             if name != 'mask'], prototype=Linear(), name='audio_back_fork')
+
+        self.phoneme_embedding = BidirectionalWMT15(GatedRecurrent(activation=Tanh(), dim=state_dim), name="phoneme_embeddings")
+        self.phoneme_fwd_fork = Fork(
+            [name for name in self.phoneme_embedding.prototype.apply.sequences
+             if name != 'mask'], prototype=Linear(), name='phoneme_fwd_fork')
+        self.phoneme_back_fork = Fork(
+            [name for name in self.phoneme_embedding.prototype.apply.sequences
+             if name != 'mask'], prototype=Linear(), name='phoneme_back_fork')
+
+        self.words_embedding = BidirectionalWMT15(GatedRecurrent(activation=Tanh(), dim=state_dim), name="words_embeddings")
+        self.words_fwd_fork = Fork(
+            [name for name in self.words_embedding.prototype.apply.sequences
+             if name != 'mask'], prototype=Linear(), name='words_fwd_fork')
+        self.words_back_fork = Fork(
+            [name for name in self.words_embedding.prototype.apply.sequences
+             if name != 'mask'], prototype=Linear(), name='words_back_fork')
+
+        self.children = [self.phoneme_embedding, self.audio_embedding, self.words_embedding,
+                         self.phoneme_fwd_fork, self.phoneme_back_fork, self.audio_fwd_fork, self.audio_back_fork, self.words_fwd_fork, self.words_back_fork]
+
+    def _push_allocation_config(self):
+        self.audio_fwd_fork.input_dim = self.feature_size
+        self.audio_fwd_fork.output_dims = [self.audio_embedding.children[0].get_dim(name) for name in self.audio_fwd_fork.output_names]
+        self.audio_back_fork.input_dim = self.feature_size
+        self.audio_back_fork.output_dims = [self.audio_embedding.children[1].get_dim(name) for name in self.audio_back_fork.output_names]
+
+        self.phoneme_fwd_fork.input_dim = 2 * self.embedding_dim
+        self.phoneme_fwd_fork.output_dims = [self.phoneme_embedding.children[0].get_dim(name) for name in self.phoneme_fwd_fork.output_names]
+        self.phoneme_back_fork.input_dim = 2 * self.embedding_dim
+        self.phoneme_back_fork.output_dims = [self.phoneme_embedding.children[1].get_dim(name) for name in self.phoneme_back_fork.output_names]
+
+        self.words_fwd_fork.input_dim = 2 * self.embedding_dim
+        self.words_fwd_fork.output_dims = [self.words_embedding.children[0].get_dim(name) for name in self.words_fwd_fork.output_names]
+        self.words_back_fork.input_dim = 2 * self.embedding_dim
+        self.words_back_fork.output_dims = [self.words_embedding.children[1].get_dim(name) for name in self.words_back_fork.output_names]
+
+    @application(inputs=['audio', 'audio_mask', 'phones_words_acoustic_ends', 'phones_words_acoustic_ends_mask', 'phoneme_words_ends', 'phoneme_words_ends_mask'],
+                 outputs=['representation'])
+    def apply(self, audio, audio_mask, phones_words_acoustic_ends, phones_words_acoustic_ends_mask, phoneme_words_ends, phoneme_words_ends_mask):
+        batch_size = audio.shape[0]
+        audio = audio.dimshuffle(1, 0, 2)
+        audio_mask = audio_mask.dimshuffle(1, 0)
+
+        audio_embeddings = self.audio_embedding.apply(
+            merge(self.audio_fwd_fork.apply(audio, as_dict=True),
+                  {'mask': audio_mask}),
+            merge(self.audio_back_fork.apply(audio, as_dict=True),
+                  {'mask': audio_mask})
+        )
+
+        rows = tensor.arange(batch_size).reshape((batch_size, 1))
+        phoneme_embeddings = audio_embeddings.dimshuffle(1, 0, 2)[rows, phones_words_acoustic_ends].dimshuffle(1, 0, 2)
+
+        phones_words_acoustic_ends_mask = phones_words_acoustic_ends_mask.dimshuffle(1, 0)
+        words_embeddings = self.phoneme_embedding.apply(
+            merge(self.phoneme_fwd_fork.apply(phoneme_embeddings, as_dict=True),
+                  {'mask': phones_words_acoustic_ends_mask}),
+            merge(self.phoneme_back_fork.apply(phoneme_embeddings, as_dict=True),
+                  {'mask': phones_words_acoustic_ends_mask})
+        )
+
+        words_embeddings = words_embeddings.dimshuffle(1, 0, 2)[rows, phoneme_words_ends].dimshuffle(1, 0, 2)
+
+        phoneme_words_ends_mask = phoneme_words_ends_mask.dimshuffle(1, 0)
+        representation = self.words_embedding.apply(
+            merge(self.words_fwd_fork.apply(phoneme_embeddings, as_dict=True),
+                  {'mask': phoneme_words_ends_mask}),
+            merge(self.words_back_fork.apply(phoneme_embeddings, as_dict=True),
+                  {'mask': phoneme_words_ends_mask})
+        )
+
+        return representation
+
 
 class GRUInitialState(GatedRecurrent):
     """Gated Recurrent with special initial state.

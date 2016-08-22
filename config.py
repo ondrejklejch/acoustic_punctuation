@@ -2,9 +2,9 @@ from lexicon import create_dictionary_from_lexicon, create_dictionary_from_punct
 
 def get_config():
     config = {}
-    config['vocabulary'] = "/disk/data2/s1569734/acoustic_punctuation/mgb.150k.wlist"
-    config['lexicon'] = create_lexicon("/disk/data2/s1569734/bbc_original/data/local/dict/lexicon.txt")
-    config['phones'] = create_phone_dictionary_from_lexicon("/disk/data2/s1569734/acoustic_punctuation/nonsilence_phones.txt", "/disk/data2/s1569734/acoustic_punctuation/silence_phones.txt")
+    config['vocabulary'] = "/disk/scratch2/s1569734/acoustic_punctuation/mgb.150k.wlist"
+    config['lexicon'] = create_lexicon("/disk/scratch2/s1569734/bbc_original/data/local/dict/lexicon.txt")
+    config['phones'] = create_phone_dictionary_from_lexicon("/disk/scratch2/s1569734/acoustic_punctuation/nonsilence_phones.txt", "/disk/scratch2/s1569734/acoustic_punctuation/silence_phones.txt")
     config['phones_vocab_size'] = len(config['phones'])
     config['punctuation_marks'] = ["<FULL_STOP>", "<COMMA>", "<QUESTION_MARK>", "<EXCLAMATION_MARK>", "<DOTS>"]
 
@@ -19,18 +19,18 @@ def get_config():
     config['unk_token'] = '<unk>'
 
 
-    config['train_data_dir'] = "/disk/data2/s1569734/bbc_original/data/train_mer10/"
-    config['train_alignment_dir'] = "/disk/data2/s1569734/bbc_without_punctuation/exp/alignment/train_mer10_without_punct/"
+    config['train_data_dir'] = "/disk/scratch2/s1569734/bbc_original/data/train_mer10/"
+    config['train_alignment_dir'] = "/disk/scratch2/s1569734/bbc_without_punctuation/exp/alignment/train_mer10_without_punct/"
 
-    config['dev_data_dir'] = "/disk/data2/s1569734/bbc_original/data/dev_for_punctuation_addition/"
-    config['dev_alignment_dir'] = "/disk/data2/s1569734/bbc_without_punctuation/exp/alignment/dev_for_punctuation_addition/"
+    config['dev_data_dir'] = "/disk/scratch2/s1569734/bbc_original/data/dev_for_punctuation_addition/"
+    config['dev_alignment_dir'] = "/disk/scratch2/s1569734/bbc_without_punctuation/exp/alignment/dev_for_punctuation_addition/"
 
-    config['data_dir'] = "/disk/data2/s1569734/acoustic_punctuation/"
+    config['data_dir'] = "/disk/scratch2/s1569734/acoustic_punctuation/"
 
     # Model related -----------------------------------------------------------
 
-    config['input'] = 'phones'
-    config['audio_feat_size'] = 43
+    config['input'] = 'phones-audio'
+    config['audio_feat_size'] = 4
     config['take_every_nth'] = 3
 
 
@@ -46,7 +46,7 @@ def get_config():
     config['dec_embed'] = 256
 
     # Where to save model, this corresponds to 'prefix' in groundhog
-    config['saveto'] = '/disk/data2/s1569734/acoustic_punctuation/nmt_punctuation_on_%s/' % config['input']
+    config['saveto'] = '/disk/scratch2/s1569734/acoustic_punctuation/nmt_punctuation_on_%s_pitch_features/' % config['input']
 
     # Optimization related ----------------------------------------------------
 
@@ -73,7 +73,7 @@ def get_config():
     # Vocabulary/dataset related ----------------------------------------------
 
     # Root directory for dataset
-    datadir = '/disk/data2/s1569734/nmt_data/'
+    datadir = '/disk/scratch2/s1569734/nmt_data/'
 
     # Module name of the stream that will be used
     config['stream'] = 'stream'

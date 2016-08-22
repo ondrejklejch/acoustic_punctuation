@@ -9,7 +9,7 @@ from blocks.initialization import IsotropicGaussian, Orthogonal, Constant
 from blocks.model import Model
 from blocks.select import Selector
 
-from model import BidirectionalEncoder, BidirectionalAudioEncoder, BidirectionalPhonesEncoder, Decoder
+from model import BidirectionalEncoder, BidirectionalAudioEncoder, BidirectionalPhonesEncoder, BidirectionalPhonemeAudioEncoder, Decoder
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler())
@@ -24,6 +24,9 @@ def create_model(config):
         models = [encoder]
     elif config["input"] == "phones":
         encoder, training_representation, sampling_representation = create_phones_encoder(config)
+        models = [encoder]
+    elif config["input"] == "phones-audio":
+        encoder, training_representation, sampling_representation = create_phones_audio_encoder(config)
         models = [encoder]
     elif config["input"] == "both":
         words_encoder, words_training_representation, words_sampling_representation = create_word_encoder(config)
@@ -123,6 +126,39 @@ def create_phones_encoder(config):
     sampling_phones_words_ends = tensor.lmatrix('sampling_phones_words_ends')
     sampling_phones_words_ends_mask = tensor.ones((sampling_phones_words_ends.shape[0], sampling_phones_words_ends.shape[1]))
     sampling_representation = encoder.apply(sampling_phones, sampling_phones_mask, sampling_phones_words_ends, sampling_phones_words_ends_mask)
+
+    return encoder, training_representation, sampling_representation
+
+def create_phones_audio_encoder(config):
+    encoder = BidirectionalPhonemeAudioEncoder(config['audio_feat_size'], config['enc_embed'], config['enc_nhids'])
+    encoder.weights_init = IsotropicGaussian(config['weight_scale'])
+    encoder.biases_init = Constant(0)
+    encoder.push_initialization_config()
+    encoder.audio_embedding.prototype.weights_init = Orthogonal()
+    encoder.phoneme_embedding.prototype.weights_init = Orthogonal()
+    encoder.words_embedding.prototype.weights_init = Orthogonal()
+    encoder.initialize()
+
+    audio = tensor.ftensor3('audio')
+    audio_mask = tensor.matrix('audio_mask')
+    phones_words_acoustic_ends = tensor.lmatrix('phones_words_acoustic_ends')
+    phones_words_acoustic_ends_mask = tensor.matrix('phones_words_acoustic_ends_mask')
+    phones_words_ends = tensor.lmatrix('phones_words_ends')
+    phones_words_ends_mask = tensor.matrix('phones_words_ends_mask')
+    training_representation = encoder.apply(audio, audio_mask, phones_words_acoustic_ends, phones_words_acoustic_ends_mask, phones_words_ends, phones_words_ends_mask)
+    training_representation.name = "phones_representation"
+
+    sampling_audio = tensor.ftensor3('sampling_audio')
+    sampling_audio_mask = tensor.ones((sampling_audio.shape[0], sampling_audio.shape[1]))
+    sampling_phones_words_acoustic_ends = tensor.lmatrix('sampling_phones_words_acoustic_ends')
+    sampling_phones_words_acoustic_ends_mask = tensor.ones((sampling_phones_words_acoustic_ends.shape[0], sampling_phones_words_acoustic_ends.shape[1]))
+    sampling_phones = tensor.lmatrix('sampling_phones')
+    sampling_phones_mask = tensor.ones((sampling_phones.shape[0], sampling_phones.shape[1]))
+    sampling_phones_words_ends = tensor.lmatrix('sampling_phones_words_ends')
+    sampling_phones_words_ends_mask = tensor.ones((sampling_phones_words_ends.shape[0], sampling_phones_words_ends.shape[1]))
+    sampling_representation = encoder.apply(
+        sampling_audio, sampling_audio_mask, sampling_phones_words_acoustic_ends,
+        sampling_phones_words_acoustic_ends_mask, sampling_phones_words_ends, sampling_phones_words_ends_mask)
 
     return encoder, training_representation, sampling_representation
 

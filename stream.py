@@ -63,7 +63,8 @@ class _too_long(object):
 def get_tr_stream(path, src_eos_idx, phones_sil, tgt_eos_idx, seq_len=50, batch_size=80, sort_k_batches=12, **kwargs):
     """Prepares the training data stream."""
 
-    sources = ('words', 'audio', 'words_ends', 'punctuation_marks', 'phones', 'phones_words_ends')
+    sources = ('words', 'audio', 'words_ends', 'punctuation_marks', 'phones', 'phones_words_ends', 'phones_words_acoustic_ends')
+    #sources = ('words', 'audio', 'words_ends', 'punctuation_marks', 'phones', 'phones_words_ends')
     dataset = H5PYDataset(path, which_sets=('train',), sources=sources, load_in_memory=False)
     print "creating example stream"
     stream = dataset.get_example_stream()
@@ -85,7 +86,15 @@ def get_tr_stream(path, src_eos_idx, phones_sil, tgt_eos_idx, seq_len=50, batch_
     stream = Batch(stream, iteration_scheme=ConstantScheme(batch_size))
 
     # Pad sequences that are short
-    masked_stream = PaddingWithEOS(stream, {'words': src_eos_idx, 'phones': phones_sil, 'punctuation_marks': tgt_eos_idx, 'audio': 0, 'words_ends': -1, 'phones_words_ends': -1})
+    masked_stream = PaddingWithEOS(stream, {
+        'words': src_eos_idx,
+        'phones': phones_sil,
+        'punctuation_marks': tgt_eos_idx,
+        'audio': 0,
+        'words_ends': -1,
+        'phones_words_ends': -1,
+        'phones_words_acoustic_ends': -1,
+    })
 
     return masked_stream
 
@@ -93,6 +102,7 @@ def get_tr_stream(path, src_eos_idx, phones_sil, tgt_eos_idx, seq_len=50, batch_
 def get_dev_stream(path, **kwargs):
     """Setup development set stream if necessary."""
 
-    sources = ('words', 'audio', 'words_ends', 'punctuation_marks', 'phones', 'phones_words_ends', 'text', 'uttids')
+    sources = ('words', 'audio', 'words_ends', 'punctuation_marks', 'phones', 'phones_words_ends', 'phones_words_acoustic_ends', 'text', 'uttids')
+    #sources = ('words', 'audio', 'words_ends', 'punctuation_marks', 'phones', 'phones_words_ends', 'text', 'uttids')
     dataset = H5PYDataset(path, which_sets=('dev',), sources=sources)
     return dataset.get_example_stream()
