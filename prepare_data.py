@@ -93,7 +93,6 @@ def get_time_boundaries(path, take_every_nth):
 
     for uttid in phones.keys():
         words_time_boundaries[uttid].append(-1)
-        phone_time_boundaries[uttid].append(-1)
         phoneme_words_boundaries[uttid].append(-1)
 
     return phones, phone_time_boundaries, words_time_boundaries, phoneme_words_boundaries
@@ -129,7 +128,7 @@ def create_numpy_array_dataset(h5file, name, num_utts, ndim, dtype):
 
 if __name__ == "__main__":
     config = get_config()
-    data_file = "%s/data_global_cmvn_with_phones_alignment_pitch_features.h5" % config["data_dir"]
+    data_file = "%s/data_global_cmvn_with_phones_alignment_pitch_features_small.h5" % config["data_dir"]
     datasets = ["train", "dev"]
 
     with h5py.File(data_file, 'w') as h5file:
@@ -140,7 +139,7 @@ if __name__ == "__main__":
         uttids = []
         for dataset in datasets:
             data_dir = config["%s_data_dir" % dataset]
-            uttids.extend(get_uttids_from_text_file("%s/text" % data_dir))
+            uttids.extend(get_uttids_from_text_file("%s/text" % data_dir)[:100])
 
         uttids = dict(zip(uttids, range(len(uttids))))
         num_utts = len(uttids)
@@ -227,6 +226,7 @@ if __name__ == "__main__":
                     continue
 
                 uttid = uttids[uttid]
+                boundaries = [-1] * max(0, phones_words_ends_shapes[uttid][0] - len(boundaries))
                 boundaries = np.array(boundaries, dtype=np.int16)
                 phones_words_acoustic_ends_shapes[uttid] = boundaries.shape
                 phones_words_acoustic_ends_dataset[uttid] = boundaries.ravel()

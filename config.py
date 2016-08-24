@@ -29,7 +29,7 @@ def get_config():
 
     # Model related -----------------------------------------------------------
 
-    config['input'] = 'phones-audio'
+    config['input'] = 'both'
     config['audio_feat_size'] = 4
     config['take_every_nth'] = 3
 
@@ -46,7 +46,7 @@ def get_config():
     config['dec_embed'] = 256
 
     # Where to save model, this corresponds to 'prefix' in groundhog
-    config['saveto'] = '/disk/scratch2/s1569734/acoustic_punctuation/nmt_punctuation_on_%s_pitch_features/' % config['input']
+    config['saveto'] = '/disk/scratch2/s1569734/acoustic_punctuation/nmt_punctuation_on_%s_mask_0.2/' % config['input']
 
     # Optimization related ----------------------------------------------------
 

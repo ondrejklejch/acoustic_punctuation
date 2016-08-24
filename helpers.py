@@ -1,5 +1,6 @@
 import logging
 import numpy as np
+import theano
 from theano import tensor
 from toolz import merge
 
@@ -14,6 +15,9 @@ from model import BidirectionalEncoder, BidirectionalAudioEncoder, Bidirectional
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler())
 logger.setLevel(logging.INFO)
+
+rs = np.random.RandomState(1234)
+rng = tensor.shared_randomstreams.RandomStreams(rs.randint(999999))
 
 def create_model(config):
     if config["input"] == "words":
@@ -32,11 +36,21 @@ def create_model(config):
         words_encoder, words_training_representation, words_sampling_representation = create_word_encoder(config)
         audio_encoder, audio_training_representation, audio_sampling_representation = create_audio_encoder(config)
 
-        def merge_representations(words, audio):
-            return tensor.max(tensor.stack([words, audio], axis=0), axis=0)
+        def merge_representations(words, audio, train=True):
+            #return tensor.max(tensor.stack([words, audio], axis=0), axis=0)
+            return tensor.mean(tensor.stack([words, audio], axis=0), axis=0)
+
+            p = 0.2
+            if train is True:
+                mask = rng.binomial(n=1, p=p, size=words.shape, dtype=theano.config.floatX)
+                return mask * words + (1-mask) * audio
+            else:
+                return p * words + (1-p) * audio
+
+
 
         training_representation = merge_representations(words_training_representation, audio_training_representation)
-        sampling_representation = merge_representations(words_sampling_representation, audio_sampling_representation)
+        sampling_representation = merge_representations(words_sampling_representation, audio_sampling_representation, False)
         models = [words_encoder, audio_encoder]
 
     decoder, cost, samples, search_model = create_decoder(config, training_representation, sampling_representation)

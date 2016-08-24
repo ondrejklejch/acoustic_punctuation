@@ -107,10 +107,10 @@ if __name__ == "__main__":
     from config import get_config
     config = get_config()
 
-    config["input"] = "audio"
-    config['audio_feat_size'] = 43
-    model_dir = "/disk/scratch2/s1569734/acoustic_punctuation/nmt_punctuation_on_audio_from_real_alignment/"
-    model_filename = "best_f1_model_1471595107_F10.45.npz"
-    data_path = "%s/data_global_cmvn_with_phones_alignment.h5" % config["data_dir"]
+    config["input"] = "both"
+    config['audio_feat_size'] = 4
+    model_dir = "/disk/scratch2/s1569734/acoustic_punctuation/nmt_punctuation_on_both_mask/"
+    model_filename = "best_f1_model_1472032660_F10.56.npz"
+    data_path = "%s/data_global_cmvn_with_phones_alignment_pitch_features.h5" % config["data_dir"]
 
     main(config, model_dir, model_filename, data_path, "../nmt_punctuation/dev_raw.txt", "punctuated_dev.txt")
