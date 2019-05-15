@@ -11,18 +11,27 @@ def get_uttids_from_text_file(path):
     uttids = set()
     with open(path, 'r') as f:
         for line in f:
-            (uttid, _) = line.strip().split(None, 1)
-            uttids.add(uttid)
+            try:
+                (uttid, _) = line.strip().split(None, 1)
+                uttids.add(uttid)
+            except ValueError, e:
+                # Ignore segments without decoded text
+                pass
+
 
     return list(uttids)
 
 def get_utterances_from_text_file(path, punctuation_marks):
     with open(path, 'r') as f:
         for line in f:
-            (uttid, text) = line.strip().split(None, 1)
-            (utt_words, utt_punctuation_marks) = text_to_words_and_punctuation_marks(text, punctuation_marks)
+            try:
+                (uttid, text) = line.strip().split(None, 1)
+                (utt_words, utt_punctuation_marks) = text_to_words_and_punctuation_marks(text, punctuation_marks)
 
-            yield uttid, utt_words, utt_punctuation_marks
+                yield uttid, utt_words, utt_punctuation_marks
+            except ValueError, e:
+                # Ignore segments without decoded text
+                pass
 
 def text_to_words_and_punctuation_marks(text, punctuation_marks):
     output_words = []
@@ -42,8 +51,8 @@ def text_to_words_and_punctuation_marks(text, punctuation_marks):
     return output_words + ["</s>"], output_punctuation_marks + ["</s>"]
 
 def get_mean_std_from_audio_features(path):
-    sum = np.zeros((4,))
-    sum_sq = np.zeros((4,))
+    sum = np.zeros((43,))
+    sum_sq = np.zeros((43,))
     n = 0
 
     with kaldi_io.SequentialBaseFloatMatrixReader(path) as reader:
@@ -128,8 +137,8 @@ def create_numpy_array_dataset(h5file, name, num_utts, ndim, dtype):
 
 if __name__ == "__main__":
     config = get_config()
-    data_file = "%s/data_global_cmvn_with_phones_alignment_pitch_features_small.h5" % config["data_dir"]
-    datasets = ["train", "dev"]
+    data_file = "%s/data_global_cmvn_with_phones_alignment_best_asr.h5" % config["data_dir"]
+    datasets = ["best_asr"]
 
     with h5py.File(data_file, 'w') as h5file:
         words_dictionary = config["src_vocab"]
@@ -139,7 +148,7 @@ if __name__ == "__main__":
         uttids = []
         for dataset in datasets:
             data_dir = config["%s_data_dir" % dataset]
-            uttids.extend(get_uttids_from_text_file("%s/text" % data_dir)[:100])
+            uttids.extend(get_uttids_from_text_file("%s/text" % data_dir))
 
         uttids = dict(zip(uttids, range(len(uttids))))
         num_utts = len(uttids)
@@ -155,7 +164,7 @@ if __name__ == "__main__":
         words_ends_shapes, words_ends = create_numpy_array_dataset(h5file, 'words_ends', num_utts, 1, 'int16')
 
 
-        mean, std = get_mean_std_from_audio_features("scp:%s/pitch.scp" % config["train_data_dir"])
+        mean, std = get_mean_std_from_audio_features("scp:%s/feats.scp" % config["train_data_dir"])
         for dataset in datasets:
             data_dir = config["%s_data_dir" % dataset]
 
@@ -177,7 +186,7 @@ if __name__ == "__main__":
                 punctuation_marks_shapes[uttid] = punctuation_marks.shape
                 punctuation_marks_dataset[uttid] = punctuation_marks
 
-            for (uttid, features) in get_audio_features_from_file("scp:%s/pitch.scp" % data_dir, config["take_every_nth"], mean, std):
+            for (uttid, features) in get_audio_features_from_file("scp:%s/feats.scp" % data_dir, config["take_every_nth"], mean, std):
                 if uttid not in uttids:
                     print "audio %s not in uttids" % uttid
                     continue
@@ -245,7 +254,7 @@ if __name__ == "__main__":
             idxs = []
             data_dir = config["%s_data_dir" % dataset]
             for uttid in get_uttids_from_text_file("%s/text" % data_dir):
-                if uttid in uttids and (audio_shapes[uttids[uttid]][1] == 4):
+                if uttid in uttids and (audio_shapes[uttids[uttid]][1] == 43):
                     if (phones_words_ends_shapes[uttids[uttid]] == words_shapes[uttids[uttid]]):
                         idxs.append(uttids[uttid])
 

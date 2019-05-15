@@ -11,6 +11,7 @@ from blocks.model import Model
 from blocks.select import Selector
 
 from model import BidirectionalEncoder, BidirectionalAudioEncoder, BidirectionalPhonesEncoder, BidirectionalPhonemeAudioEncoder, Decoder
+from cost import stimulation_cost
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler())
@@ -37,23 +38,52 @@ def create_model(config):
         audio_encoder, audio_training_representation, audio_sampling_representation = create_audio_encoder(config)
 
         def merge_representations(words, audio, train=True):
-            #return tensor.max(tensor.stack([words, audio], axis=0), axis=0)
-            return tensor.mean(tensor.stack([words, audio], axis=0), axis=0)
+            if config["combination"] == "max":
+                return tensor.max(tensor.stack([words, audio], axis=0), axis=0)
+            if config["combination"] == "dropout-max":
+                max = tensor.max(tensor.stack([words, audio], axis=0), axis=0)
+                p = 0.5
+                if train is True:
+                    mask = tensor.extra_ops.repeat(rng.binomial(n=1, p=p, size=(1, words.shape[1], words.shape[2]), dtype=theano.config.floatX), words.shape[0], axis=0)
+                    return mask * max
+                else:
+                    return p * max
+            if config["combination"] == "avg":
+                return tensor.mean(tensor.stack([words, audio], axis=0), axis=0)
+            if config["combination"] == "add":
+                return words + audio
+            if config["combination"] == "dropout-add":
+                p = 0.5
+                if train is True:
+                    mask = tensor.extra_ops.repeat(rng.binomial(n=1, p=p, size=(1, words.shape[1], words.shape[2]), dtype=theano.config.floatX), words.shape[0], axis=0)
+                    return mask * (words + audio)
+                else:
+                    return p * (words + audio)
+            if config["combination"] == "concat":
+                return tensor.concatenate([words, audio], axis=2)
+            if config["combination"] == "mask":
+                p = 0.5
+                if train is True:
+                    #mask = rng.binomial(n=1, p=p, size=words.shape, dtype=theano.config.floatX)
+                    mask = tensor.extra_ops.repeat(rng.binomial(n=1, p=p, size=(1, words.shape[1], words.shape[2]), dtype=theano.config.floatX), words.shape[0], axis=0)
 
-            p = 0.2
-            if train is True:
-                mask = rng.binomial(n=1, p=p, size=words.shape, dtype=theano.config.floatX)
-                return mask * words + (1-mask) * audio
-            else:
-                return p * words + (1-p) * audio
-
+                    return mask * words + (1-mask) * audio
+                else:
+                    return p * words + (1-p) * audio
 
 
         training_representation = merge_representations(words_training_representation, audio_training_representation)
         sampling_representation = merge_representations(words_sampling_representation, audio_sampling_representation, False)
         models = [words_encoder, audio_encoder]
 
-    decoder, cost, samples, search_model = create_decoder(config, training_representation, sampling_representation)
+    decoder, cost, samples, search_model, punctuation_marks, mask = create_decoder(config, training_representation, sampling_representation)
+
+    # Add stimulation cost
+    #weights = decoder.children[0].children[2].children[1].children[1].parameters[0]
+    ##cost = cost + stimulation_cost(32, training_representation, weights, punctuation_marks)
+    #cost = stimulation_cost(16, training_representation, weights, punctuation_marks, mask)
+    #cost.name = "stimulated_cost"
+
     print_parameteters(models + [decoder])
 
     return cost, samples, search_model
@@ -63,8 +93,8 @@ def create_multitask_model(config):
     audio_encoder, audio_training_representation, audio_sampling_representation = create_audio_encoder(config)
     models = [words_encoder, audio_encoder]
 
-    decoder, words_cost, words_samples, words_search_model = create_decoder(config, words_training_representation, words_sampling_representation)
-    audio_cost, audio_samples, audio_search_model = use_decoder_on_representations(decoder, audio_training_representation, audio_sampling_representation)
+    decoder, words_cost, words_samples, words_search_model, _, _ = create_decoder(config, words_training_representation, words_sampling_representation)
+    audio_cost, audio_samples, audio_search_model, _, _ = use_decoder_on_representations(decoder, audio_training_representation, audio_sampling_representation)
 
     print_parameteters(models + [decoder])
     words_cost = words_cost + audio_cost
@@ -177,16 +207,21 @@ def create_phones_audio_encoder(config):
     return encoder, training_representation, sampling_representation
 
 def create_decoder(config, training_representation, sampling_representation):
-    decoder = Decoder(config['trg_vocab_size'], config['dec_embed'], config['dec_nhids'], config['enc_nhids'] * 2)
+    if config["combination"] == 'concat':
+        enc_nhids = config["enc_nhids"] * 4
+    else:
+        enc_nhids = config["enc_nhids"] * 2
+
+    decoder = Decoder(config['trg_vocab_size'], config['dec_embed'], config['dec_nhids'], enc_nhids)
     decoder.weights_init = IsotropicGaussian(config['weight_scale'])
     decoder.biases_init = Constant(0)
     decoder.push_initialization_config()
     decoder.transition.weights_init = Orthogonal()
     decoder.initialize()
 
-    cost, samples, search_model = use_decoder_on_representations(decoder, training_representation, sampling_representation)
+    cost, samples, search_model, punctuation_marks, mask = use_decoder_on_representations(decoder, training_representation, sampling_representation)
 
-    return decoder, cost, samples, search_model
+    return decoder, cost, samples, search_model, punctuation_marks, mask
 
 def use_decoder_on_representations(decoder, training_representation, sampling_representation):
     punctuation_marks = tensor.lmatrix('punctuation_marks')
@@ -197,7 +232,7 @@ def use_decoder_on_representations(decoder, training_representation, sampling_re
     search_model = Model(generated)
     _, samples = VariableFilter(bricks=[decoder.sequence_generator], name="outputs")(ComputationGraph(generated[1]))
 
-    return cost, samples, search_model
+    return cost, samples, search_model, punctuation_marks, punctuation_marks_mask
 
 
 def print_parameteters(models):

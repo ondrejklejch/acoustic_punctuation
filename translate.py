@@ -108,9 +108,10 @@ if __name__ == "__main__":
     config = get_config()
 
     config["input"] = "both"
-    config['audio_feat_size'] = 4
-    model_dir = "/disk/scratch2/s1569734/acoustic_punctuation/nmt_punctuation_on_both_mask/"
-    model_filename = "best_f1_model_1472032660_F10.56.npz"
-    data_path = "%s/data_global_cmvn_with_phones_alignment_pitch_features.h5" % config["data_dir"]
+    config["combination"] = "dropout-add"
+    config['audio_feat_size'] = 43
+    model_dir = "/disk/scratch2/s1569734/acoustic_punctuation/nmt_punctuation_on_both_dropout-add/"
+    model_filename = "best_f1_model_1473242935_F10.59.npz"
+    data_path = "%s/data_global_cmvn_with_phones_alignment.h5" % config["data_dir"]
 
     main(config, model_dir, model_filename, data_path, "../nmt_punctuation/dev_raw.txt", "punctuated_dev.txt")

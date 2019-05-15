@@ -25,11 +25,15 @@ def get_config():
     config['dev_data_dir'] = "/disk/scratch2/s1569734/bbc_original/data/dev_for_punctuation_addition/"
     config['dev_alignment_dir'] = "/disk/scratch2/s1569734/bbc_without_punctuation/exp/alignment/dev_for_punctuation_addition/"
 
+    config['best_asr_data_dir'] = "/disk/scratch2/s1569734/bbc_without_punctuation/data/best_asr/"
+    config['best_asr_alignment_dir'] = "/disk/scratch2/s1569734/bbc_without_punctuation/exp/alignment/best_asr/"
+
     config['data_dir'] = "/disk/scratch2/s1569734/acoustic_punctuation/"
 
     # Model related -----------------------------------------------------------
 
     config['input'] = 'both'
+    config['combination'] = 'dropout-add'
     config['audio_feat_size'] = 4
     config['take_every_nth'] = 3
 
@@ -46,7 +50,7 @@ def get_config():
     config['dec_embed'] = 256
 
     # Where to save model, this corresponds to 'prefix' in groundhog
-    config['saveto'] = '/disk/scratch2/s1569734/acoustic_punctuation/nmt_punctuation_on_%s_mask_0.2/' % config['input']
+    config['saveto'] = '/disk/scratch2/s1569734/acoustic_punctuation/nmt_punctuation_on_%s_%s_pitch/' % (config['input'], config['combination'])
 
     # Optimization related ----------------------------------------------------
 
